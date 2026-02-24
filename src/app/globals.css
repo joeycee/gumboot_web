@@ -1,8 +1,31 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+:root{
+  /* Core */
+  --bg-0: #2A3439;     /* Gunmetal (app background) */
+  --bg-1: #3E4A51;     /* Charcoal (panels) */
+  --bg-2: #2F3A40;     /* Slight lift layer (optional) */
+
+  /* Text */
+  --text-1: #E5E5E5;   /* Smoky White */
+  --text-2: rgba(229,229,229,0.72);
+  --text-3: rgba(229,229,229,0.48);
+  --text-4: rgba(229,229,229,0.28);
+
+  /* Accent */
+  --accent: #5B6E7F;   /* Slate Blue */
+  --cta: #26A69A;      /* Vibrant Teal */
+  --danger: #B75B5B;   /* Urgent / Decline */
+
+  /* Lines + surfaces */
+  --line: rgba(229,229,229,0.12);
+  --line-strong: rgba(229,229,229,0.20);
+
+  --glass-1: rgba(229,229,229,0.06);
+  --glass-2: rgba(229,229,229,0.10);
+  --glass-3: rgba(229,229,229,0.16);
+
+  --shadow: 0 18px 50px rgba(0,0,0,0.35);
 }
 
 @theme inline {
