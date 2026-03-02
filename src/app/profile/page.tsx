@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 const PROFILE_ENDPOINT = "https://api.gumboot.app/api/profile";
 const API_BASE = "https://api.gumboot.app";
 const TOKEN_STORAGE_KEYS = ["gumboot_token", "token"];
+const PROFILE_SETUP_DRAFT_KEY = "gumboot_signup_profile_setup";
+const PROFILE_CUSTOM_FIELDS_KEY = "gumboot_profile_custom_fields";
 
 type Skill = { _id: string; name: string; image?: string[] };
 type RatingData = { count: number; averageRating: number };
@@ -25,6 +27,7 @@ type ProfileResponse = {
   message: string;
   body: { profiledata: ProfileData; ratingdata: RatingData };
 };
+type ProfileCustomFields = { skills: string[]; tools: string[] };
 
 const buildImageUrl = (p?: string) =>
   p ? (p.startsWith("http") ? p : `${API_BASE}${p}`) : "/placeholder.png";
@@ -36,6 +39,66 @@ function getAuthToken() {
     if (val) return val;
   }
   return null;
+}
+
+function isDevLocalSession(token: string | null) {
+  const inDevMode =
+    process.env.NEXT_PUBLIC_TWILIO_MODE === "development" ||
+    process.env.TWILIO_MODE === "development";
+  return inDevMode && token === "dev-local-token";
+}
+
+function readDevProfileBody(): ProfileResponse["body"] {
+  const fallback: ProfileResponse["body"] = {
+    profiledata: {
+      _id: "dev-local-user",
+      firstname: "Dev",
+      lastname: "User",
+      email: "dev@gumboot.local",
+      bio: "Local development profile. API calls are bypassed in dev mode.",
+      verified_user: 0,
+      skill: [],
+      tools: [],
+    },
+    ratingdata: { count: 0, averageRating: 0 },
+  };
+
+  if (typeof window === "undefined") return fallback;
+  const raw = window.localStorage.getItem(PROFILE_SETUP_DRAFT_KEY);
+  if (!raw) return fallback;
+
+  try {
+    const parsed = JSON.parse(raw) as { bio?: string };
+    return {
+      ...fallback,
+      profiledata: {
+        ...fallback.profiledata,
+        bio: parsed.bio?.trim() || fallback.profiledata.bio,
+      },
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function readProfileCustomFields(): ProfileCustomFields {
+  if (typeof window === "undefined") return { skills: [], tools: [] };
+  const raw = window.localStorage.getItem(PROFILE_CUSTOM_FIELDS_KEY);
+  if (!raw) return { skills: [], tools: [] };
+  try {
+    const parsed = JSON.parse(raw) as Partial<ProfileCustomFields>;
+    return {
+      skills: Array.isArray(parsed.skills) ? parsed.skills : [],
+      tools: Array.isArray(parsed.tools) ? parsed.tools : [],
+    };
+  } catch {
+    return { skills: [], tools: [] };
+  }
+}
+
+function writeProfileCustomFields(fields: ProfileCustomFields) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(PROFILE_CUSTOM_FIELDS_KEY, JSON.stringify(fields));
 }
 
 /**
@@ -304,6 +367,44 @@ const styles = `
     color: var(--text-1);
   }
 
+  .pp-editor-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .pp-editor-input {
+    flex: 1;
+    background: rgba(42,52,57,0.9);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    color: var(--text-1);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    padding: 10px 12px;
+    outline: none;
+  }
+  .pp-editor-btn {
+    border: none;
+    border-radius: 10px;
+    background: var(--cta);
+    color: #ffffff;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 10px 12px;
+    cursor: pointer;
+  }
+  .pp-remove-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-3);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0 0 0 4px;
+  }
+
   /* Responsive */
   @media (max-width: 560px) {
     .pp-container { padding: 28px 20px 34px; border-radius: 16px; }
@@ -334,6 +435,14 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ProfileResponse["body"] | null>(null);
+  const [skillInput, setSkillInput] = useState("");
+  const [toolInput, setToolInput] = useState("");
+  const [customSkills, setCustomSkills] = useState<string[]>(
+    () => readProfileCustomFields().skills
+  );
+  const [customTools, setCustomTools] = useState<string[]>(
+    () => readProfileCustomFields().tools
+  );
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -341,6 +450,12 @@ export default function ProfilePage() {
       setError(null);
 
       const token = getAuthToken();
+
+      if (isDevLocalSession(token)) {
+        setData(readDevProfileBody());
+        return;
+      }
+
       if (!token) {
         setError("No auth token found. Please log in first.");
         setData(null);
@@ -382,6 +497,58 @@ export default function ProfilePage() {
       [profile?.firstname, profile?.lastname].filter(Boolean).join(" ") || "Unknown User",
     [profile?.firstname, profile?.lastname]
   );
+
+  const displayedSkills = useMemo(() => {
+    const apiSkills = (profile?.skill ?? []).map((s) => s.name).filter(Boolean);
+    return Array.from(new Set([...apiSkills, ...customSkills]));
+  }, [profile?.skill, customSkills]);
+
+  const displayedTools = useMemo(() => {
+    const apiTools = (profile?.tools ?? [])
+      .map((tool, idx) =>
+        typeof tool === "string" ? tool : tool.name || `Tool ${idx + 1}`
+      )
+      .filter(Boolean);
+    return Array.from(new Set([...apiTools, ...customTools]));
+  }, [profile?.tools, customTools]);
+
+  function addSkill() {
+    const value = skillInput.trim();
+    if (!value) return;
+    if (displayedSkills.includes(value)) {
+      setSkillInput("");
+      return;
+    }
+    const next = [...customSkills, value];
+    setCustomSkills(next);
+    writeProfileCustomFields({ skills: next, tools: customTools });
+    setSkillInput("");
+  }
+
+  function addTool() {
+    const value = toolInput.trim();
+    if (!value) return;
+    if (displayedTools.includes(value)) {
+      setToolInput("");
+      return;
+    }
+    const next = [...customTools, value];
+    setCustomTools(next);
+    writeProfileCustomFields({ skills: customSkills, tools: next });
+    setToolInput("");
+  }
+
+  function removeSkill(name: string) {
+    const next = customSkills.filter((s) => s !== name);
+    setCustomSkills(next);
+    writeProfileCustomFields({ skills: next, tools: customTools });
+  }
+
+  function removeTool(name: string) {
+    const next = customTools.filter((t) => t !== name);
+    setCustomTools(next);
+    writeProfileCustomFields({ skills: customSkills, tools: next });
+  }
 
   return (
     <>
@@ -451,21 +618,38 @@ export default function ProfilePage() {
 
               <div className="pp-section">
                 <p className="pp-section-label">Skills</p>
-                {profile.skill && profile.skill.length > 0 ? (
+                <div className="pp-editor-row">
+                  <input
+                    className="pp-editor-input"
+                    placeholder="Add a skill (e.g. Plumbing)"
+                    value={skillInput}
+                    onChange={(e) => setSkillInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addSkill();
+                      }
+                    }}
+                  />
+                  <button type="button" className="pp-editor-btn" onClick={addSkill}>
+                    Add
+                  </button>
+                </div>
+                {displayedSkills.length > 0 ? (
                   <div className="pp-skills-grid">
-                    {profile.skill.map((s) => (
-                      <div key={s._id} className="pp-skill-chip">
-                        {s.image?.[0] && (
-                          <img
-                            src={buildImageUrl(s.image[0])}
-                            alt={s.name}
-                            onError={(e) => {
-                              e.currentTarget.src = "/globe.svg";
-                            }}
-                            className="pp-skill-img"
-                          />
+                    {displayedSkills.map((skillName) => (
+                      <div key={skillName} className="pp-skill-chip">
+                        <span className="pp-skill-name">{skillName}</span>
+                        {customSkills.includes(skillName) && (
+                          <button
+                            type="button"
+                            className="pp-remove-btn"
+                            onClick={() => removeSkill(skillName)}
+                            aria-label={`Remove ${skillName}`}
+                          >
+                            ×
+                          </button>
                         )}
-                        <span className="pp-skill-name">{s.name}</span>
                       </div>
                     ))}
                   </div>
@@ -478,17 +662,39 @@ export default function ProfilePage() {
 
               <div className="pp-section">
                 <p className="pp-section-label">Tools</p>
-                {profile.tools && profile.tools.length > 0 ? (
+                <div className="pp-editor-row">
+                  <input
+                    className="pp-editor-input"
+                    placeholder="Add a tool (e.g. Drill)"
+                    value={toolInput}
+                    onChange={(e) => setToolInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addTool();
+                      }
+                    }}
+                  />
+                  <button type="button" className="pp-editor-btn" onClick={addTool}>
+                    Add
+                  </button>
+                </div>
+                {displayedTools.length > 0 ? (
                   <div className="pp-tools-list">
-                    {profile.tools.map((tool, idx) => {
-                      const name = typeof tool === "string" ? tool : tool.name || `Tool ${idx + 1}`;
-                      const key =
-                        typeof tool === "string"
-                          ? `${tool}-${idx}`
-                          : tool._id || `${name}-${idx}`;
+                    {displayedTools.map((name) => {
                       return (
-                        <span key={key} className="pp-tool-tag">
+                        <span key={name} className="pp-tool-tag">
                           {name}
+                          {customTools.includes(name) && (
+                            <button
+                              type="button"
+                              className="pp-remove-btn"
+                              onClick={() => removeTool(name)}
+                              aria-label={`Remove ${name}`}
+                            >
+                              ×
+                            </button>
+                          )}
                         </span>
                       );
                     })}

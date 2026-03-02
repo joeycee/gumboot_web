@@ -96,4 +96,4 @@ End Points:
 "/deletedAccount"
 
 
-josep@cosmo:~/projects/gumboot_backend$
+josep@cosmo:~/projects/gumboot_backend

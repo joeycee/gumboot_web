@@ -26,7 +26,7 @@ export async function signup(payload: {
   phone: string;
   country_code?: string | number;
 }) {
-  return api<ApiEnvelope<unknown>>("/signup", {
+  return api<ApiEnvelope<SendOtpBody>>("/signup", {
     method: "POST",
     body: payload,
   });
@@ -47,12 +47,29 @@ export async function sendLoginOtp(payload: {
 }
 
 /**
+ * RESEND OTP (signup flow)
+ */
+export async function resendSignupOtp(payload: {
+  phone: string;
+  country_code?: string | number;
+  serviceSid?: string;
+  service_sid?: string;
+  service_id?: string;
+}) {
+  return api<ApiEnvelope<SendOtpBody>>("/resend_otp", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+/**
  * VERIFY OTP (signup + login)
  * Confirms OTP and creates session
  */
 export async function otpVerify(payload: {
   phone: string;
   otp: string;
+  code?: string;
   country_code?: string | number;
   serviceSid?: string;
   service_sid?: string;

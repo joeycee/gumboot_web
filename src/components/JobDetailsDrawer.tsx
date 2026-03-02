@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { Job } from "@/lib/jobs";
 
 const styles = `
@@ -43,8 +44,6 @@ const styles = `
     border-radius: 18px 18px 0 0;
     border: 1px solid rgba(255,255,255,0.20);
     border-bottom: none;
-
-    /* keep teal vibe but make reading easier with a light inner container */
     background: linear-gradient(135deg, var(--teal-1), var(--teal-2));
     display: flex;
     flex-direction: column;
@@ -242,6 +241,20 @@ const styles = `
 
   /* Images */
   .jdd-images-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .jdd-image-btn{
+    border: none;
+    padding: 0;
+    background: transparent;
+    cursor: pointer;
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    outline: none;
+  }
+  .jdd-image-btn:focus-visible{
+    outline: 3px solid rgba(28,143,178,0.35);
+    outline-offset: 2px;
+  }
   .jdd-image {
     width: 100%;
     height: 118px;
@@ -250,7 +263,38 @@ const styles = `
     border: 1px solid var(--line);
     display: block;
     background: #ffffff;
+    transition: transform 0.18s ease, filter 0.18s ease;
   }
+  .jdd-image-btn:hover .jdd-image{
+    transform: scale(1.02);
+    filter: saturate(1.05);
+  }
+  .jdd-image-overlay{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:flex-end;
+    justify-content:flex-end;
+    padding: 8px;
+    pointer-events:none;
+    opacity:0;
+    transition: opacity .18s ease;
+  }
+  .jdd-image-btn:hover .jdd-image-overlay{ opacity:1; }
+  .jdd-image-pill{
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .10em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.92);
+    background: rgba(15,23,42,0.45);
+    border: 1px solid rgba(255,255,255,0.20);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    padding: 6px 8px;
+    border-radius: 999px;
+  }
+
   .jdd-no-images {
     border: 1px solid var(--line);
     border-radius: 12px;
@@ -300,6 +344,155 @@ const styles = `
     .jdd-surface { margin: 0 10px 10px; border-radius: 14px; }
     .jdd-body { padding: 18px 14px; }
   }
+
+  /* ============================
+     Image Viewer (Lightbox)
+     ============================ */
+
+  .jiv-overlay{
+    position: fixed;
+    inset: 0;
+    z-index: 80; /* above drawer overlay */
+    background: rgba(2,6,23,0.72);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding: 18px;
+    animation: jiv-fade .16s ease both;
+  }
+  @keyframes jiv-fade { from{ opacity:0 } to{ opacity:1 } }
+
+  .jiv-card{
+    width: min(980px, 100%);
+    height: min(720px, 100%);
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,0.14);
+    background:
+      radial-gradient(900px 520px at 20% 10%, rgba(32,151,189,0.18), rgba(0,0,0,0) 55%),
+      rgba(15,23,42,0.35);
+    box-shadow: 0 26px 70px rgba(0,0,0,0.55);
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+  }
+
+  .jiv-topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding: 12px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.10);
+    color: rgba(255,255,255,0.90);
+    flex-shrink:0;
+  }
+  .jiv-title{
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.70);
+    padding-left: 6px;
+    white-space: nowrap;
+    overflow:hidden;
+    text-overflow: ellipsis;
+    max-width: 60%;
+  }
+
+  .jiv-btn{
+    border: 1px solid rgba(255,255,255,0.16);
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.92);
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    cursor: pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    transition: transform .12s ease, background .12s ease, border-color .12s ease;
+  }
+  .jiv-btn:hover{
+    transform: translateY(-1px);
+    background: rgba(255,255,255,0.12);
+    border-color: rgba(255,255,255,0.24);
+  }
+  .jiv-btn:active{ transform: translateY(0); }
+
+  .jiv-main{
+    flex:1;
+    min-height:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    position:relative;
+    padding: 14px;
+  }
+
+  .jiv-img{
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.03);
+  }
+
+  .jiv-nav{
+    position:absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+  }
+  .jiv-prev{ left: 12px; }
+  .jiv-next{ right: 12px; }
+
+  .jiv-footer{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    border-top: 1px solid rgba(255,255,255,0.10);
+    color: rgba(255,255,255,0.70);
+    flex-shrink:0;
+  }
+  .jiv-counter{
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .02em;
+  }
+  .jiv-dots{
+    display:flex;
+    gap: 6px;
+    align-items:center;
+    overflow:auto;
+    max-width: 65%;
+    padding-bottom: 2px;
+  }
+  .jiv-dot{
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.24);
+    background: rgba(255,255,255,0.10);
+    cursor:pointer;
+    flex: 0 0 auto;
+  }
+  .jiv-dot.active{
+    background: rgba(32,151,189,0.85);
+    border-color: rgba(32,151,189,0.95);
+    box-shadow: 0 0 0 3px rgba(32,151,189,0.20);
+  }
+
+  @media (max-width: 520px){
+    .jiv-card{ height: min(680px, 100%); }
+    .jiv-title{ max-width: 52%; }
+    .jiv-nav{ width: 40px; height: 40px; border-radius: 14px; }
+  }
 `;
 
 function resolveMediaUrl(path: string | undefined, apiOrigin: string): string | null {
@@ -314,14 +507,101 @@ function RatingStars({ value }: { value: number }) {
   return (
     <div className="jdd-rating-stars" aria-label={`Rating: ${value.toFixed(1)} out of 5`}>
       {Array.from({ length: 5 }).map((_, i) => (
-        <span
-          key={i}
-          className={`jdd-star ${i < rounded ? "filled" : "empty"}`}
-          aria-hidden="true"
-        >
+        <span key={i} className={`jdd-star ${i < rounded ? "filled" : "empty"}`} aria-hidden="true">
           ★
         </span>
       ))}
+    </div>
+  );
+}
+
+function ImageViewer({
+  open,
+  title,
+  images,
+  index,
+  onIndexChange,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  images: string[];
+  index: number;
+  onIndexChange: (i: number) => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft") onIndexChange((index - 1 + images.length) % images.length);
+      if (e.key === "ArrowRight") onIndexChange((index + 1) % images.length);
+    };
+
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, index, images.length, onClose, onIndexChange]);
+
+  if (!open) return null;
+
+  const canNav = images.length > 1;
+  const safeIndex = Math.max(0, Math.min(images.length - 1, index));
+  const src = images[safeIndex];
+
+  return (
+    <div className="jiv-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="Image viewer">
+      <div className="jiv-card" onClick={(e) => e.stopPropagation()}>
+        <div className="jiv-topbar">
+          <div className="jiv-title">{title}</div>
+          <button className="jiv-btn" onClick={onClose} aria-label="Close viewer">
+            ✕
+          </button>
+        </div>
+
+        <div className="jiv-main">
+          {canNav && (
+            <button
+              className="jiv-btn jiv-nav jiv-prev"
+              onClick={() => onIndexChange((safeIndex - 1 + images.length) % images.length)}
+              aria-label="Previous image"
+            >
+              ‹
+            </button>
+          )}
+
+          <img className="jiv-img" src={src} alt={`${title} image ${safeIndex + 1}`} />
+
+          {canNav && (
+            <button
+              className="jiv-btn jiv-nav jiv-next"
+              onClick={() => onIndexChange((safeIndex + 1) % images.length)}
+              aria-label="Next image"
+            >
+              ›
+            </button>
+          )}
+        </div>
+
+        <div className="jiv-footer">
+          <div className="jiv-counter">
+            {safeIndex + 1} / {images.length}
+          </div>
+
+          {images.length > 1 && (
+            <div className="jiv-dots" aria-label="Image thumbnails">
+              {images.map((_, i) => (
+                <button
+                  key={i}
+                  className={`jiv-dot${i === safeIndex ? " active" : ""}`}
+                  onClick={() => onIndexChange(i)}
+                  aria-label={`Go to image ${i + 1}`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -339,13 +619,30 @@ function DrawerContent({
   onApply: (jobId: string) => void;
   mobile?: boolean;
 }) {
-  const images = (job.imageUrls ?? [])
-    .map((url) => resolveMediaUrl(url, apiOrigin))
-    .filter((url): url is string => Boolean(url));
+  const images = useMemo(
+    () =>
+      (job.imageUrls ?? [])
+        .map((url) => resolveMediaUrl(url, apiOrigin))
+        .filter((url): url is string => Boolean(url)),
+    [job.imageUrls, apiOrigin]
+  );
+
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(0);
 
   const rating = job.userAverageRating ?? 0;
   const ratingCount = job.userRatingCount ?? 0;
   const hasDate = job.date || job.expDate;
+
+  // stop background scroll while viewer open
+  useEffect(() => {
+    if (!viewerOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [viewerOpen]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -358,7 +655,6 @@ function DrawerContent({
         </button>
       </div>
 
-      {/* Light inner container for readability */}
       <div className="jdd-surface">
         <div className="jdd-body">
           <h2 className="jdd-title">{job.title || "Untitled Job"}</h2>
@@ -393,15 +689,25 @@ function DrawerContent({
 
           <div className="jdd-divider" />
           <p className="jdd-section-label">Photos</p>
+
           {images.length > 0 ? (
             <div className="jdd-images-grid">
               {images.map((src, i) => (
-                <img
+                <button
                   key={`${job.id}-img-${i}`}
-                  src={src}
-                  alt={`${job.title || "Job"} image ${i + 1}`}
-                  className="jdd-image"
-                />
+                  className="jdd-image-btn"
+                  onClick={() => {
+                    setViewerIndex(i);
+                    setViewerOpen(true);
+                  }}
+                  aria-label={`Open photo ${i + 1}`}
+                  type="button"
+                >
+                  <img src={src} alt={`${job.title || "Job"} image ${i + 1}`} className="jdd-image" />
+                  <div className="jdd-image-overlay">
+                    <span className="jdd-image-pill">View</span>
+                  </div>
+                </button>
               ))}
             </div>
           ) : (
@@ -425,6 +731,15 @@ function DrawerContent({
           </button>
         </div>
       </div>
+
+      <ImageViewer
+        open={viewerOpen}
+        title={job.title || "Job photo"}
+        images={images}
+        index={viewerIndex}
+        onIndexChange={setViewerIndex}
+        onClose={() => setViewerOpen(false)}
+      />
     </div>
   );
 }
@@ -450,13 +765,7 @@ export function JobDetailsDrawer({
       <div className="jdd-root">
         <div className="jdd-overlay" onClick={onClose}>
           <div className="jdd-panel-mobile" onClick={(e) => e.stopPropagation()}>
-            <DrawerContent
-              job={job}
-              apiOrigin={apiOrigin}
-              onClose={onClose}
-              onApply={onApply}
-              mobile
-            />
+            <DrawerContent job={job} apiOrigin={apiOrigin} onClose={onClose} onApply={onApply} mobile />
           </div>
 
           <div className="jdd-panel-desktop" onClick={(e) => e.stopPropagation()}>

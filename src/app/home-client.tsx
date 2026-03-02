@@ -8,69 +8,53 @@ import { JobDetailsDrawer } from "@/components/JobDetailsDrawer";
 import { api } from "@/lib/api";
 import { Job, normalizeJobs } from "@/lib/jobs";
 import { useMe } from "@/lib/useMe";
-import { logout } from "@/lib/auth";
 
 type ViewMode = "map" | "list";
 
 const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap');
-
   .hc-root * { box-sizing: border-box; }
-  .hc-root { font-family: 'DM Sans', sans-serif; color: #fff; }
-
-  /* ── Auth area ── */
-  .auth-loading {
-    font-size: 12px;
-    color: rgba(255,255,255,0.35);
-    letter-spacing: 0.06em;
+  .hc-root {
+    height: 100dvh;            /* ✅ lock page to viewport */
+    width: 100%;
+    overflow: hidden;          /* ✅ prevent popover/select reflow affecting layout */
+    display: flex;
+    flex-direction: column;
+    font-family: 'DM Sans', sans-serif;
+    color: #E5E5E5;
   }
-  .auth-user {
+
+  .hc-shell-wrap {
+    flex: 1;
+    min-height: 0;             /* ✅ critical for flex + map */
+    overflow: hidden;
+  }
+
+  .hc-footer {
+    flex-shrink: 0;
+    height: 44px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    justify-content: space-between;
+    padding: 0 14px;
+    border-top: 1px solid rgba(229,229,229,0.10);
+    background: rgba(30,37,41,0.55);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: rgba(229,229,229,0.45);
+    font-size: 12px;
   }
-  .auth-name {
-    font-size: 13px;
-    color: rgba(255,255,255,0.65);
-  }
-  .auth-btn {
-    font-family: 'DM Sans', sans-serif;
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    background: rgba(255,255,255,0.07);
-    border: 1px solid rgba(255,255,255,0.16);
-    color: rgba(255,255,255,0.55);
-    padding: 7px 16px;
-    border-radius: 7px;
-    cursor: pointer;
-    transition: all 0.16s;
-  }
-  .auth-btn:hover {
-    background: rgba(255,255,255,0.14);
-    border-color: rgba(255,255,255,0.28);
-    color: rgba(255,255,255,0.9);
-  }
-  .auth-btn.primary {
-    background: rgba(255,255,255,0.18);
-    border-color: rgba(255,255,255,0.38);
-    color: #ffffff;
-  }
-  .auth-btn.primary:hover {
-    background: rgba(255,255,255,0.26);
-    border-color: rgba(255,255,255,0.52);
-  }
+  .hc-footer strong { color: rgba(229,229,229,0.78); font-weight: 700; }
 
   /* ── Left panel ── */
   .lp-root {
     height: 100%;
     display: flex;
     flex-direction: column;
+    min-height: 0;
   }
   .lp-header {
     padding: 18px 20px 14px;
-    border-bottom: 1px solid rgba(255,255,255,0.10);
+    border-bottom: 1px solid rgba(229,229,229,0.10);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -80,33 +64,34 @@ const styles = `
     font-family: 'DM Serif Display', serif;
     font-size: 20px;
     font-weight: 400;
-    color: #ffffff;
+    color: #E5E5E5;
     margin: 0;
     line-height: 1;
   }
   .lp-view-toggle {
     font-family: 'DM Sans', sans-serif;
     font-size: 10px;
-    font-weight: 500;
+    font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    background: rgba(255,255,255,0.07);
-    border: 1px solid rgba(255,255,255,0.16);
-    color: rgba(255,255,255,0.50);
+    background: rgba(229,229,229,0.06);
+    border: 1px solid rgba(229,229,229,0.14);
+    color: rgba(229,229,229,0.50);
     padding: 6px 12px;
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
-    transition: all 0.16s;
+    transition: all 0.15s;
   }
   .lp-view-toggle:hover {
-    background: rgba(255,255,255,0.14);
-    border-color: rgba(255,255,255,0.28);
-    color: rgba(255,255,255,0.85);
+    background: rgba(229,229,229,0.12);
+    border-color: rgba(229,229,229,0.24);
+    color: rgba(229,229,229,0.88);
+    transform: translateY(-1px);
   }
 
   .lp-status {
     padding: 10px 20px;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
+    border-bottom: 1px solid rgba(229,229,229,0.07);
     flex-shrink: 0;
     min-height: 36px;
     display: flex;
@@ -114,184 +99,112 @@ const styles = `
   }
   .lp-status-text {
     font-size: 11px;
-    color: rgba(255,255,255,0.30);
+    color: rgba(229,229,229,0.28);
     letter-spacing: 0.03em;
   }
-  .lp-status-text.error { color: rgba(255,200,200,0.75); }
+  .lp-status-text.error { color: rgba(183,91,91,0.85); }
   .lp-status-count {
     font-size: 11px;
-    color: rgba(255,255,255,0.55);
+    color: rgba(38,166,154,0.80);
     letter-spacing: 0.04em;
+    font-weight: 500;
   }
 
   .lp-jobs {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     scrollbar-width: thin;
-    scrollbar-color: rgba(255,255,255,0.12) transparent;
+    scrollbar-color: rgba(229,229,229,0.10) transparent;
   }
   .lp-jobs::-webkit-scrollbar { width: 4px; }
   .lp-jobs::-webkit-scrollbar-track { background: transparent; }
-  .lp-jobs::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+  .lp-jobs::-webkit-scrollbar-thumb { background: rgba(229,229,229,0.10); border-radius: 2px; }
 
   .job-row {
     width: 100%;
     text-align: left;
     padding: 14px 20px;
     border: none;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
+    border-bottom: 1px solid rgba(229,229,229,0.06);
     background: transparent;
     cursor: pointer;
     transition: background 0.14s;
     display: block;
     color: inherit;
   }
-  .job-row:hover { background: rgba(255,255,255,0.07); }
-  .job-row.selected { background: rgba(255,255,255,0.14); }
+  .job-row:hover { background: rgba(229,229,229,0.05); }
+  .job-row.selected {
+    background: rgba(38,166,154,0.10);
+    border-left: 2px solid #26A69A;
+    padding-left: 18px;
+  }
 
   .job-row-title {
     font-size: 13px;
     font-weight: 500;
-    color: rgba(255,255,255,0.85);
+    color: rgba(229,229,229,0.82);
     margin-bottom: 3px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .job-row.selected .job-row-title { color: #ffffff; }
+  .job-row.selected .job-row-title { color: #E5E5E5; }
   .job-row-type {
     font-size: 10px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.30);
+    color: rgba(229,229,229,0.28);
     margin-bottom: 4px;
   }
   .job-row-meta {
     font-size: 11px;
-    color: rgba(255,255,255,0.40);
+    color: rgba(229,229,229,0.38);
     display: flex;
     gap: 6px;
     align-items: center;
   }
-  .job-row-price { color: rgba(255,255,255,0.60); }
-  .job-row-dot   { color: rgba(255,255,255,0.20); }
-  .job-row-coords { color: rgba(255,255,255,0.28); font-variant-numeric: tabular-nums; }
-
-  /* ── Right drawer content ── */
-  .rd-root {
-    padding: 24px 20px;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-  }
-  .rd-section-label {
-    font-size: 10px;
-    font-weight: 500;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.32);
-    margin-bottom: 10px;
-  }
-  .rd-hint {
-    font-size: 13px;
-    color: rgba(255,255,255,0.55);
-    line-height: 1.65;
-    font-weight: 300;
-    font-style: italic;
-  }
-  .rd-profile-btn {
-    font-family: 'DM Sans', sans-serif;
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    width: 100%;
-    text-align: left;
-    background: rgba(255,255,255,0.09);
-    border: 1px solid rgba(255,255,255,0.18);
-    color: rgba(255,255,255,0.70);
-    padding: 12px 16px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.16s;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .rd-profile-btn:hover {
-    background: rgba(255,255,255,0.16);
-    border-color: rgba(255,255,255,0.32);
-    color: #ffffff;
-  }
-  .rd-profile-btn-arrow { color: rgba(255,255,255,0.30); font-size: 12px; }
-
-  .rd-links-card {
-    border: 1px solid rgba(255,255,255,0.10);
-    border-radius: 10px;
-    padding: 16px;
-    background: rgba(255,255,255,0.05);
-  }
-  .rd-links-title {
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.28);
-    margin-bottom: 12px;
-  }
-  .rd-link-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
-    font-size: 12px;
-    color: rgba(255,255,255,0.40);
-  }
-  .rd-link-item:last-child { border-bottom: none; }
-  .rd-link-dot {
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.22);
-    flex-shrink: 0;
-  }
+  .job-row-price { color: #26A69A; font-weight: 500; }
+  .job-row-dot   { color: rgba(229,229,229,0.18); }
+  .job-row-coords { color: rgba(229,229,229,0.26); font-variant-numeric: tabular-nums; }
 
   /* ── List view ── */
   .list-view-root {
-    padding: 32px 28px;
+    padding: 28px;
     min-height: 100%;
-    background: #2097bd;
+    width: 100%;
+    background: transparent;
   }
   .list-view-heading {
     font-family: 'DM Serif Display', serif;
     font-size: 26px;
     font-weight: 400;
-    color: #ffffff;
-    margin: 0 0 28px;
+    color: #E5E5E5;
+    margin: 0 0 24px;
   }
   .list-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 12px;
   }
   .list-card {
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 10px;
+    border: 1px solid rgba(229,229,229,0.10);
+    border-radius: 14px;
     padding: 18px;
     cursor: pointer;
-    transition: all 0.16s;
-    background: rgba(255,255,255,0.07);
+    transition: all 0.15s;
+    background: rgba(62,74,81,0.50);
   }
   .list-card:hover {
-    background: rgba(255,255,255,0.14);
-    border-color: rgba(255,255,255,0.24);
+    background: rgba(62,74,81,0.80);
+    border-color: rgba(229,229,229,0.18);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
   }
   .list-card-title {
     font-size: 14px;
     font-weight: 500;
-    color: rgba(255,255,255,0.90);
+    color: rgba(229,229,229,0.88);
     margin-bottom: 5px;
     white-space: nowrap;
     overflow: hidden;
@@ -301,28 +214,25 @@ const styles = `
     font-size: 10px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.30);
-    margin-bottom: 10px;
+    color: rgba(229,229,229,0.28);
+    margin-bottom: 12px;
   }
-  .list-card-price {
-    font-size: 13px;
-    font-weight: 500;
-    color: #ffffff;
-  }
+  .list-card-price { font-size: 15px; font-weight: 600; color: #26A69A; }
   .list-card-price.unknown {
-    color: rgba(255,255,255,0.30);
+    font-size: 12px;
+    color: rgba(229,229,229,0.28);
     font-weight: 300;
     font-style: italic;
   }
 
-  /* Skeleton shimmer */
+  /* Skeleton */
   @keyframes shimmer {
     0%   { background-position: 200% 0; }
     100% { background-position: -200% 0; }
   }
   .skeleton-row {
     padding: 14px 20px;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
+    border-bottom: 1px solid rgba(229,229,229,0.06);
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -331,9 +241,9 @@ const styles = `
     border-radius: 3px;
     background: linear-gradient(
       90deg,
-      rgba(255,255,255,0.08) 25%,
-      rgba(255,255,255,0.14) 50%,
-      rgba(255,255,255,0.08) 75%
+      rgba(229,229,229,0.06) 25%,
+      rgba(229,229,229,0.10) 50%,
+      rgba(229,229,229,0.06) 75%
     );
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
@@ -342,7 +252,7 @@ const styles = `
 
 export default function HomeClient() {
   const router = useRouter();
-  const { user, loading: meLoading, refresh } = useMe();
+  const { user } = useMe();
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
@@ -350,6 +260,9 @@ export default function HomeClient() {
   const [mode, setMode] = useState<ViewMode>("map");
   const [error, setError] = useState<string | null>(null);
   const [loadingJobs, setLoadingJobs] = useState(false);
+  const [selectedJobType, setSelectedJobType] = useState("");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
 
   const apiOrigin = useMemo(
     () => (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/api\/?$/, ""),
@@ -372,7 +285,9 @@ export default function HomeClient() {
         if (mounted) setLoadingJobs(false);
       }
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const openJobDrawer = useCallback((job: Job) => {
@@ -396,131 +311,137 @@ export default function HomeClient() {
     [router, user]
   );
 
-  const handleLogout = useCallback(async () => {
-    try { await logout(); } finally { await refresh(); }
-  }, [refresh]);
-
-  const topRight = useMemo(() => {
-    if (meLoading) return <span className="auth-loading">···</span>;
-    if (user) {
-      return (
-        <div className="auth-user">
-          <span className="auth-name">{user?.firstname || user?.name || "Account"}</span>
-          <button className="auth-btn" onClick={handleLogout}>Sign out</button>
-        </div>
-      );
-    }
-    return (
-      <button className="auth-btn primary" onClick={() => router.push("/auth/login")}>
-        Sign in
-      </button>
+  const jobTypes = useMemo(() => {
+    return Array.from(new Set(jobs.map((j) => j.jobTypeName || "General").filter(Boolean))).sort(
+      (a, b) => a.localeCompare(b)
     );
-  }, [meLoading, user, router, handleLogout]);
+  }, [jobs]);
 
-  const leftPanel = useMemo(() => (
-    <div className="lp-root">
-      <div className="lp-header">
-        <h2 className="lp-heading">Jobs</h2>
-        <button className="lp-view-toggle" onClick={() => setMode((m) => (m === "map" ? "list" : "map"))}>
-          {mode === "map" ? "List" : "Map"}
-        </button>
-      </div>
+  const filteredJobs = useMemo(() => {
+    const min = minPrice ? Number(minPrice) : null;
+    const max = maxPrice ? Number(maxPrice) : null;
 
-      <div className="lp-status">
-        {error && <span className="lp-status-text error">{error}</span>}
-        {!error && loadingJobs && <span className="lp-status-text">Loading…</span>}
-        {!error && !loadingJobs && jobs.length === 0 && <span className="lp-status-text">No jobs found.</span>}
-        {!error && !loadingJobs && jobs.length > 0 && <span className="lp-status-count">{jobs.length} jobs</span>}
-      </div>
+    return jobs.filter((job) => {
+      const type = job.jobTypeName || "General";
+      const matchesType = !selectedJobType || type === selectedJobType;
 
-      <div className="lp-jobs">
-        {loadingJobs
-          ? Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="skeleton-row">
-                <div className="skeleton-line" style={{ width: `${55 + (i % 3) * 15}%`, height: 12 }} />
-                <div className="skeleton-line" style={{ width: "30%", height: 9 }} />
-                <div className="skeleton-line" style={{ width: "45%", height: 9 }} />
-              </div>
-            ))
-          : jobs.map((j) => (
-              <button
-                key={j.id}
-                onClick={() => openJobDrawer(j)}
-                className={`job-row${selectedJob?.id === j.id ? " selected" : ""}`}
-              >
-                <div className="job-row-title">{j.title}</div>
-                <div className="job-row-type">{j.jobTypeName || "General"}</div>
-                <div className="job-row-meta">
-                  <span className="job-row-price">{j.price != null ? `$${j.price}` : "—"}</span>
-                  <span className="job-row-dot">·</span>
-                  <span className="job-row-coords">{j.lat.toFixed(3)}, {j.lng.toFixed(3)}</span>
+      const price = typeof job.price === "number" ? job.price : null;
+      const matchesMin = min == null || (price != null && price >= min);
+      const matchesMax = max == null || (price != null && price <= max);
+
+      return matchesType && matchesMin && matchesMax;
+    });
+  }, [jobs, selectedJobType, minPrice, maxPrice]);
+
+  const leftPanel = useMemo(
+    () => (
+      <div className="lp-root">
+        <div className="lp-header">
+          <h2 className="lp-heading">Jobs</h2>
+          <button className="lp-view-toggle" onClick={() => setMode((m) => (m === "map" ? "list" : "map"))}>
+            {mode === "map" ? "List" : "Map"}
+          </button>
+        </div>
+
+        <div className="lp-status">
+          {error && <span className="lp-status-text error">{error}</span>}
+          {!error && loadingJobs && <span className="lp-status-text">Loading…</span>}
+          {!error && !loadingJobs && filteredJobs.length === 0 && (
+            <span className="lp-status-text">No jobs found.</span>
+          )}
+          {!error && !loadingJobs && filteredJobs.length > 0 && (
+            <span className="lp-status-count">{filteredJobs.length} jobs available</span>
+          )}
+        </div>
+
+        <div className="lp-jobs">
+          {loadingJobs
+            ? Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="skeleton-row">
+                  <div className="skeleton-line" style={{ width: `${55 + (i % 3) * 15}%`, height: 12 }} />
+                  <div className="skeleton-line" style={{ width: "30%", height: 9 }} />
+                  <div className="skeleton-line" style={{ width: "45%", height: 9 }} />
                 </div>
-              </button>
-            ))}
+              ))
+            : filteredJobs.map((j) => (
+                <button
+                  key={j.id}
+                  onClick={() => openJobDrawer(j)}
+                  className={`job-row${selectedJob?.id === j.id ? " selected" : ""}`}
+                >
+                  <div className="job-row-title">{j.title}</div>
+                  <div className="job-row-type">{j.jobTypeName || "General"}</div>
+                  <div className="job-row-meta">
+                    <span className="job-row-price">{j.price != null ? `$${j.price}` : "—"}</span>
+                    <span className="job-row-dot">·</span>
+                    <span className="job-row-coords">
+                      {j.lat.toFixed(3)}, {j.lng.toFixed(3)}
+                    </span>
+                  </div>
+                </button>
+              ))}
+        </div>
       </div>
-    </div>
-  ), [jobs, selectedJob, mode, error, loadingJobs, openJobDrawer]);
-
-  const rightDrawer = (
-    <div className="rd-root">
-      <div>
-        <p className="rd-section-label">Account</p>
-        <p className="rd-hint">
-          {user
-            ? `Signed in as ${user?.firstname || user?.name || "you"}.`
-            : "Sign in to apply for jobs and manage your profile."}
-        </p>
-      </div>
-
-      <button className="rd-profile-btn" onClick={() => router.push("/profile")}>
-        <span>View profile</span>
-        <span className="rd-profile-btn-arrow">→</span>
-      </button>
-
-      <div className="rd-links-card">
-        <p className="rd-links-title">Coming soon</p>
-        {["Edit profile", "My jobs / My work", "Transactions & Withdrawals", "Reviews"].map((label) => (
-          <div key={label} className="rd-link-item">
-            <span className="rd-link-dot" />
-            {label}
-          </div>
-        ))}
-      </div>
-    </div>
+    ),
+    [filteredJobs, selectedJob, mode, error, loadingJobs, openJobDrawer]
   );
 
   return (
     <>
       <style>{styles}</style>
-      <div className="hc-root">
-        <Shell left={leftPanel} right={rightDrawer} topRight={topRight}>
-          {mode === "map" ? (
-            <MapJobs jobs={jobs} onSelect={openJobDrawer} />
-          ) : (
-            <div className="list-view-root">
-              <h1 className="list-view-heading">All Jobs</h1>
-              <div className="list-grid">
-                {jobs.map((j) => (
-                  <div key={j.id} className="list-card" onClick={() => openJobDrawer(j)}>
-                    <div className="list-card-title">{j.title}</div>
-                    <div className="list-card-type">{j.jobTypeName || "General"}</div>
-                    <div className={`list-card-price${j.price == null ? " unknown" : ""}`}>
-                      {j.price != null ? `$${j.price}` : "Price unknown"}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
-          <JobDetailsDrawer
-            open={isDrawerOpen}
-            job={selectedJob}
-            apiOrigin={apiOrigin}
-            onClose={closeJobDrawer}
-            onApply={onApply}
-          />
-        </Shell>
+      <div className="hc-root">
+        <div className="hc-shell-wrap">
+          <Shell
+            left={leftPanel}
+            jobTypes={jobTypes}
+            selectedJobType={selectedJobType}
+            onSelectedJobTypeChange={setSelectedJobType}
+            minPrice={minPrice}
+            maxPrice={maxPrice}
+            onMinPriceChange={setMinPrice}
+            onMaxPriceChange={setMaxPrice}
+            onClearFilters={() => {
+              setSelectedJobType("");
+              setMinPrice("");
+              setMaxPrice("");
+            }}
+          >
+            {mode === "map" ? (
+              <MapJobs jobs={filteredJobs} onSelect={openJobDrawer} />
+            ) : (
+              <div className="list-view-root">
+                <h1 className="list-view-heading">All Jobs</h1>
+                <div className="list-grid">
+                  {filteredJobs.map((j) => (
+                    <div key={j.id} className="list-card" onClick={() => openJobDrawer(j)}>
+                      <div className="list-card-title">{j.title}</div>
+                      <div className="list-card-type">{j.jobTypeName || "General"}</div>
+                      <div className={`list-card-price${j.price == null ? " unknown" : ""}`}>
+                        {j.price != null ? `$${j.price}` : "Price unknown"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <JobDetailsDrawer
+              open={isDrawerOpen}
+              job={selectedJob}
+              apiOrigin={apiOrigin}
+              onClose={closeJobDrawer}
+              onApply={onApply}
+            />
+          </Shell>
+        </div>
+
+        <footer className="hc-footer">
+          <div>
+            <strong>Gumboot</strong> · browse jobs
+          </div>
+          <div>{filteredJobs.length} showing</div>
+        </footer>
       </div>
     </>
   );
