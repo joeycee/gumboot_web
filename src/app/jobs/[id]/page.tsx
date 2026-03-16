@@ -1,5 +1,6 @@
 import JobDetailsClient from "./job-details-client";
 
-export default function Page({ params }: { params: { id: string } }) {
-  return <JobDetailsClient id={params.id} />;
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <JobDetailsClient id={id} />;
 }

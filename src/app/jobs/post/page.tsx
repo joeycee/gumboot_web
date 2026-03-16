@@ -1,11 +1,21 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getJobTypes, JobType } from "@/lib/postJob";
+import { extractCardsFromResponse, getSavedCards } from "@/lib/payments";
 
 type DateMode = "urgent" | "exact" | "before" | "after";
 type TimeMode = "morning" | "afternoon" | "exact-time" | "anytime";
+type JobTypeOption = JobType & {
+  _id?: string;
+  description?: string;
+  image?: string | string[];
+  iconPath?: string;
+  jobTypeIconPath?: string;
+  job_type_icon?: string;
+};
 
 const styles = `
   .pj-root * { box-sizing: border-box; }
@@ -99,6 +109,20 @@ const styles = `
     margin-bottom: 12px;
     font-size: 13px;
     white-space: pre-wrap;
+  }
+  .pj-banner {
+    border: 1px solid rgba(38,166,154,0.34);
+    background: rgba(38,166,154,0.12);
+    color: rgba(229,229,229,0.92);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .pj-banner-link {
+    color: #ffffff;
+    font-weight: 600;
   }
   .pj-actions {
     display: flex;
@@ -318,10 +342,50 @@ const styles = `
 `;
 
 const steps = ["Basics", "Job Type & Budget", "Images", "Date & Time", "Address", "Review"] as const;
+const POST_JOB_DRAFT_KEY = "gumboot-post-job-draft";
+
+type PostJobDraft = {
+  step?: number;
+  title?: string;
+  description?: string;
+  jobTypeId?: string;
+  budget?: string;
+  dateMode?: DateMode;
+  jobDate?: string;
+  timeMode?: TimeMode;
+  exactTime?: string;
+  addressLine?: string;
+  lat?: number | null;
+  lng?: number | null;
+  pendingSubmit?: boolean;
+  hadImages?: boolean;
+};
 
 function readToken() {
   if (typeof window === "undefined") return "";
   return window.localStorage.getItem("gumboot_token") || window.localStorage.getItem("token") || "";
+}
+
+function readPostJobDraft(): PostJobDraft | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(POST_JOB_DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PostJobDraft;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePostJobDraft(draft: PostJobDraft) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(POST_JOB_DRAFT_KEY, JSON.stringify(draft));
+}
+
+function clearPostJobDraft() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(POST_JOB_DRAFT_KEY);
 }
 
 function ymdFromDate(d: Date) {
@@ -371,7 +435,7 @@ function resolveAssetUrl(pathOrUrl: string | undefined, apiOrigin: string) {
 }
 
 /** Job type image resolver — prefers API-provided icon/image paths, falls back to /public/job-types/{slug}.jpg */
-function resolveJobTypeImage(t: any, apiOrigin: string) {
+function resolveJobTypeImage(t: JobTypeOption, apiOrigin: string) {
   const raw =
     (typeof t?.icon === "string" && t.icon) ||
     (typeof t?.iconPath === "string" && t.iconPath) ||
@@ -395,6 +459,7 @@ function resolveJobTypeImage(t: any, apiOrigin: string) {
 
 export default function PostJobPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
   const mapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
@@ -404,6 +469,11 @@ export default function PostJobPage() {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cardCheckLoading, setCardCheckLoading] = useState(true);
+  const [hasSavedCard, setHasSavedCard] = useState(false);
+  const [draftHydrated, setDraftHydrated] = useState(false);
+  const [pendingResumeSubmit, setPendingResumeSubmit] = useState(false);
+  const [restoredDraftHadImages, setRestoredDraftHadImages] = useState(false);
 
   const [jobTypes, setJobTypes] = useState<JobType[]>([]);
   const [jobTypesLoading, setJobTypesLoading] = useState(true);
@@ -429,12 +499,40 @@ export default function PostJobPage() {
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
+  const resumeSubmitRef = useRef(false);
+  const resumeRequested = searchParams.get("resume") === "1";
+  const resumePath = "/jobs/post?resume=1";
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const token = readToken();
-    if (!token) router.push(`/auth/login?next=${encodeURIComponent("/jobs/post")}`);
-  }, [router]);
+    const draft = readPostJobDraft();
+    if (draft) {
+      setStep(
+        Math.min(
+          steps.length - 1,
+          Math.max(resumeRequested || draft.pendingSubmit ? steps.length - 1 : 0, Number(draft.step ?? 0) || 0)
+        )
+      );
+      setTitle(draft.title ?? "");
+      setDescription(draft.description ?? "");
+      setJobTypeId(draft.jobTypeId ?? "");
+      setBudget(draft.budget ?? "");
+      setDateMode(draft.dateMode ?? "exact");
+      setJobDate(draft.jobDate ?? "");
+      setTimeMode(draft.timeMode ?? "anytime");
+      setExactTime(draft.exactTime ?? "");
+      setAddressLine(draft.addressLine ?? "");
+      setLat(typeof draft.lat === "number" ? draft.lat : null);
+      setLng(typeof draft.lng === "number" ? draft.lng : null);
+      setPendingResumeSubmit(Boolean(draft.pendingSubmit));
+      setRestoredDraftHadImages(Boolean(draft.hadImages));
+      if (resumeRequested && draft.hadImages) {
+        setError("Your draft was restored. Please re-add any images before posting.");
+      }
+    } else if (resumeRequested) {
+      setStep(steps.length - 1);
+    }
+    setDraftHydrated(true);
+  }, [resumeRequested]);
 
   useEffect(() => {
     let mounted = true;
@@ -455,6 +553,68 @@ export default function PostJobPage() {
       mounted = false;
     };
   }, []);
+
+  const refreshSavedCardState = useCallback(async () => {
+    const token = readToken();
+    if (!token) {
+      setHasSavedCard(false);
+      setCardCheckLoading(false);
+      return false;
+    }
+
+    setCardCheckLoading(true);
+    try {
+      const response = await getSavedCards();
+      const hasCard = extractCardsFromResponse(response).length > 0;
+      setHasSavedCard(hasCard);
+      return hasCard;
+    } catch {
+      setHasSavedCard(false);
+      return false;
+    } finally {
+      setCardCheckLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshSavedCardState();
+  }, [refreshSavedCardState]);
+
+  useEffect(() => {
+    if (!draftHydrated) return;
+    writePostJobDraft({
+      step,
+      title,
+      description,
+      jobTypeId,
+      budget,
+      dateMode,
+      jobDate,
+      timeMode,
+      exactTime,
+      addressLine,
+      lat,
+      lng,
+      pendingSubmit: pendingResumeSubmit,
+      hadImages: files.length > 0,
+    });
+  }, [
+    addressLine,
+    budget,
+    dateMode,
+    description,
+    draftHydrated,
+    exactTime,
+    files.length,
+    jobDate,
+    jobTypeId,
+    lat,
+    lng,
+    pendingResumeSubmit,
+    step,
+    timeMode,
+    title,
+  ]);
 
   // Generate image previews whenever files change
   useEffect(() => {
@@ -536,7 +696,7 @@ export default function PostJobPage() {
   }, [mapsKey, step]);
 
   const selectedTypeName = useMemo(() => {
-    const found = (jobTypes as any[]).find((t) => String(t.id ?? t._id) === String(jobTypeId));
+    const found = (jobTypes as JobTypeOption[]).find((t) => String(t.id ?? t._id) === String(jobTypeId));
     return found?.name || "";
   }, [jobTypeId, jobTypes]);
 
@@ -549,7 +709,7 @@ export default function PostJobPage() {
     return true;
   }
 
-  async function handleSubmit() {
+  const handleSubmit = useCallback(async () => {
     try {
       setError(null);
 
@@ -561,11 +721,51 @@ export default function PostJobPage() {
       if (!addressLine.trim()) return setError("Address is required.");
       if (lat == null || lng == null) return setError("Pick an address suggestion so lat/lng are captured.");
 
-      setLoading(true);
-
       const token = readToken();
       if (!token) {
-        setError("Not logged in (missing token). Please log in again.");
+        setPendingResumeSubmit(true);
+        writePostJobDraft({
+          step: steps.length - 1,
+          title,
+          description,
+          jobTypeId,
+          budget,
+          dateMode,
+          jobDate,
+          timeMode,
+          exactTime,
+          addressLine,
+          lat,
+          lng,
+          pendingSubmit: true,
+          hadImages: files.length > 0,
+        });
+        router.push(`/auth/login?next=${encodeURIComponent(resumePath)}`);
+        return;
+      }
+
+      setLoading(true);
+
+      const canPostWithCard = await refreshSavedCardState();
+      if (!canPostWithCard) {
+        setPendingResumeSubmit(true);
+        writePostJobDraft({
+          step: steps.length - 1,
+          title,
+          description,
+          jobTypeId,
+          budget,
+          dateMode,
+          jobDate,
+          timeMode,
+          exactTime,
+          addressLine,
+          lat,
+          lng,
+          pendingSubmit: true,
+          hadImages: files.length > 0,
+        });
+        router.push(`/profile/payments?next=${encodeURIComponent(resumePath)}`);
         return;
       }
 
@@ -585,9 +785,9 @@ export default function PostJobPage() {
       });
 
       const addressText = await addressRes.text();
-      let addressJson: any = {};
+      let addressJson: Record<string, unknown> = {};
       try {
-        addressJson = JSON.parse(addressText);
+        addressJson = JSON.parse(addressText) as Record<string, unknown>;
       } catch {
         addressJson = { message: addressText };
       }
@@ -619,22 +819,40 @@ export default function PostJobPage() {
       });
 
       const jobText = await jobRes.text();
-      let jobJson: any = {};
+      let jobJson: Record<string, unknown> = {};
       try {
-        jobJson = JSON.parse(jobText);
+        jobJson = JSON.parse(jobText) as Record<string, unknown>;
       } catch {
         jobJson = { message: jobText };
       }
 
       if (!jobRes.ok) throw new Error(jobJson?.message || jobJson?.error || `add_job failed (${jobRes.status})`);
 
+      clearPostJobDraft();
       router.push("/?posted=1");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to post job");
     } finally {
       setLoading(false);
     }
-  }
+  }, [
+    API_BASE,
+    addressLine,
+    budget,
+    dateMode,
+    description,
+    exactTime,
+    files,
+    jobDate,
+    jobTypeId,
+    lat,
+    lng,
+    refreshSavedCardState,
+    resumePath,
+    router,
+    timeMode,
+    title,
+  ]);
 
   // Calendar model
   const calModel = useMemo(() => {
@@ -663,6 +881,25 @@ export default function PostJobPage() {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
+  useEffect(() => {
+    if (!draftHydrated || !resumeRequested || !pendingResumeSubmit || loading || cardCheckLoading) return;
+    if (!readToken() || !hasSavedCard || restoredDraftHadImages) return;
+    if (files.length > 0) return;
+    if (resumeSubmitRef.current) return;
+    resumeSubmitRef.current = true;
+    void handleSubmit();
+  }, [
+    cardCheckLoading,
+    draftHydrated,
+    files.length,
+    handleSubmit,
+    hasSavedCard,
+    loading,
+    pendingResumeSubmit,
+    restoredDraftHadImages,
+    resumeRequested,
+  ]);
+
   return (
     <>
       <style>{styles}</style>
@@ -673,6 +910,23 @@ export default function PostJobPage() {
             Step {step + 1} of {steps.length} • {steps[step]}
           </p>
           <h1 className="pj-title">Post a job</h1>
+
+          {step === steps.length - 1 && !readToken() && (
+            <div className="pj-banner">
+              Finish your draft first, then sign in on this last step and we&apos;ll keep it ready to post.
+            </div>
+          )}
+
+          {step === steps.length - 1 && readToken() && !cardCheckLoading && !hasSavedCard && (
+            <div className="pj-banner">
+              A saved card is required before posting a job.
+              {" "}
+              <Link className="pj-banner-link" href={`/profile/payments?next=${encodeURIComponent(resumePath)}`}>
+                Add a card in Wallet & Payments
+              </Link>
+              {" "}and we&apos;ll bring you back here to finish posting.
+            </div>
+          )}
 
           {error && <div className="pj-error">{error}</div>}
 
@@ -724,7 +978,7 @@ export default function PostJobPage() {
                   <p className="pj-note">No job types available right now.</p>
                 ) : (
                   <div className="jt-grid" role="list" aria-label="Job types">
-                    {(jobTypes as any[]).map((t) => {
+                    {(jobTypes as JobTypeOption[]).map((t) => {
                       const id = String(t.id ?? t._id ?? "");
                       const isActive = id === String(jobTypeId);
                       const img = resolveJobTypeImage(t, apiOrigin) || "/globe.svg";
@@ -742,7 +996,6 @@ export default function PostJobPage() {
                             }
                           }}
                           tabIndex={0}
-                          aria-pressed={isActive}
                         >
                           <div className="jt-img">
                             <div className="jt-img-badge">
@@ -1008,6 +1261,8 @@ export default function PostJobPage() {
                   {timeMode === "exact-time" && exactTime ? ` (${exactTime})` : ""}
                 </li>
                 <li><strong>Address:</strong> {addressLine || "—"}</li>
+                <li><strong>Account status:</strong> {readToken() ? "Signed in" : "Sign in required before posting"}</li>
+                <li><strong>Saved card on file:</strong> {!readToken() ? "Checked after sign in" : cardCheckLoading ? "Checking…" : hasSavedCard ? "Yes" : "No"}</li>
               </ul>
             </div>
           )}
@@ -1032,8 +1287,19 @@ export default function PostJobPage() {
                 Continue
               </button>
             ) : (
-              <button type="button" className="pj-btn primary" onClick={handleSubmit} disabled={loading}>
-                {loading ? "Posting..." : "Post job"}
+              <button
+                type="button"
+                className="pj-btn primary"
+                onClick={handleSubmit}
+                disabled={loading}
+              >
+                {loading
+                  ? "Posting..."
+                  : !readToken()
+                    ? "Sign in to post"
+                    : !cardCheckLoading && !hasSavedCard
+                      ? "Add card to post"
+                      : "Post job"}
               </button>
             )}
           </div>

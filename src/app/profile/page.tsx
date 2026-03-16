@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const PROFILE_ENDPOINT = "https://api.gumboot.app/api/profile";
@@ -277,6 +279,32 @@ const styles = `
   }
 
   .pp-rating-row { display: flex; align-items: center; gap: 10px; }
+  .pp-header-actions {
+    margin-top: 14px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .pp-link-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    padding: 10px 14px;
+    text-decoration: none;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border: 1px solid rgba(229,229,229,0.14);
+    background: rgba(229,229,229,0.06);
+    color: var(--text-1);
+    transition: transform 0.12s, background 0.12s, border-color 0.12s;
+  }
+  .pp-link-btn:hover {
+    transform: translateY(-1px);
+    background: rgba(229,229,229,0.10);
+    border-color: var(--line-strong);
+  }
 
   .pp-stars { display: flex; gap: 2px; }
   .pp-star { font-size: 14px; line-height: 1; }
@@ -432,6 +460,7 @@ function RatingStars({ value }: { value: number }) {
 }
 
 export default function ProfilePage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ProfileResponse["body"] | null>(null);
@@ -457,8 +486,8 @@ export default function ProfilePage() {
       }
 
       if (!token) {
-        setError("No auth token found. Please log in first.");
         setData(null);
+        router.replace("/auth/login");
         return;
       }
 
@@ -472,6 +501,11 @@ export default function ProfilePage() {
       });
 
       const json = (await res.json()) as Partial<ProfileResponse>;
+      if (res.status === 401 || res.status === 403) {
+        setData(null);
+        router.replace("/auth/login");
+        return;
+      }
       if (!res.ok || !json.success || !json.body) {
         throw new Error(json.message || "Failed to load profile");
       }
@@ -479,11 +513,15 @@ export default function ProfilePage() {
       setData(json.body);
     } catch (e: unknown) {
       setData(null);
+      if (e instanceof Error && /401|403/.test(e.message)) {
+        router.replace("/auth/login");
+        return;
+      }
       setError(e instanceof Error ? e.message : "Failed to load profile");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     fetchProfile();
@@ -608,6 +646,12 @@ export default function ProfilePage() {
                     <span className="pp-rating-count">
                       {rating?.count ?? 0} review{(rating?.count ?? 0) !== 1 ? "s" : ""}
                     </span>
+                  </div>
+
+                  <div className="pp-header-actions">
+                    <Link className="pp-link-btn" href="/profile/payments">
+                      Wallet & payments
+                    </Link>
                   </div>
                 </div>
               </div>

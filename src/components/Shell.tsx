@@ -167,7 +167,7 @@ const styles = `
   .shell-apply-hint{ font-size:11px; color: var(--text-4); white-space:nowrap; padding-right:2px; }
 
   .shell-left{
-    width:380px;
+    width:420px;
     flex-shrink:0;
     min-height: 0;                   /* ✅ */
     display:flex;
@@ -222,7 +222,7 @@ const styles = `
   @media (max-width: 980px){
     :root{ --gap: 10px; }
     .shell-body{ padding:var(--gap); gap:var(--gap); }
-    .shell-left{ width: 340px; }
+    .shell-left{ width: 380px; }
   }
 
   @media (max-width: 760px){

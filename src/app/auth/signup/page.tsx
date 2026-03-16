@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signup } from "@/lib/auth";
 
 const styles = `
@@ -304,6 +304,8 @@ const styles = `
 
 export default function SignupPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath = searchParams.get("next");
   const twilioMode =
     process.env.NEXT_PUBLIC_TWILIO_MODE ?? process.env.TWILIO_MODE;
   const isTwilioDevMode = twilioMode === "development";
@@ -324,7 +326,7 @@ export default function SignupPage() {
       setError(null);
       if (isTwilioDevMode) {
         router.push(
-          `/auth/verify-otp?flow=signup&next=${encodeURIComponent("/auth/signup/profile-setup")}&phone=${encodeURIComponent(form.phone)}&country_code=${encodeURIComponent(form.country_code)}&dev_otp=123456`
+          `/auth/verify-otp?flow=signup&next=${encodeURIComponent(`/auth/signup/profile-setup${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`)}&phone=${encodeURIComponent(form.phone)}&country_code=${encodeURIComponent(form.country_code)}&dev_otp=123456`
         );
         return;
       }
@@ -339,7 +341,7 @@ export default function SignupPage() {
       }
       const devOtpQuery = devOtp ? `&dev_otp=${encodeURIComponent(devOtp)}` : "";
       router.push(
-        `/auth/verify-otp?flow=signup&next=${encodeURIComponent("/auth/signup/profile-setup")}&phone=${encodeURIComponent(form.phone)}&country_code=${encodeURIComponent(form.country_code)}&service_sid=${encodeURIComponent(serviceSid)}${devOtpQuery}`
+        `/auth/verify-otp?flow=signup&next=${encodeURIComponent(`/auth/signup/profile-setup${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`)}&phone=${encodeURIComponent(form.phone)}&country_code=${encodeURIComponent(form.country_code)}&service_sid=${encodeURIComponent(serviceSid)}${devOtpQuery}`
       );
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Signup failed";

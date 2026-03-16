@@ -363,7 +363,7 @@ export default function VerifyOtpPage() {
       } catch (profileError) {
         console.warn("[auth] profile fetch after verify failed:", profileError);
       }
-      router.push(flow === "signup" ? nextPath || "/profile" : "/");
+      router.push(nextPath || (flow === "signup" ? "/profile" : "/"));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Invalid code");
     } finally {

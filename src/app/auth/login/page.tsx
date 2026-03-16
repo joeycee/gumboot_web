@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { sendLoginOtp } from "@/lib/auth";
 
 const styles = `
@@ -304,6 +304,8 @@ const styles = `
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath = searchParams.get("next");
   const [countryCode, setCountryCode] = useState("+64");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
@@ -323,8 +325,9 @@ export default function LoginPage() {
       const serviceSidQuery = serviceSid
         ? `&service_sid=${encodeURIComponent(serviceSid)}`
         : "";
+      const nextQuery = nextPath ? `&next=${encodeURIComponent(nextPath)}` : "";
       router.push(
-        `/auth/verify-otp?phone=${encodeURIComponent(phone)}&country_code=${encodeURIComponent(countryCode)}${serviceSidQuery}`
+        `/auth/verify-otp?phone=${encodeURIComponent(phone)}&country_code=${encodeURIComponent(countryCode)}${serviceSidQuery}${nextQuery}`
       );
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Failed to send OTP";
@@ -370,7 +373,7 @@ export default function LoginPage() {
           <section className="lp-form-panel">
             <h2 className="lp-form-title">Sign in</h2>
             <p className="lp-form-sub">
-              Enter your phone number and we'll send a one-time code.
+              Enter your phone number and we&apos;ll send a one-time code.
             </p>
 
             {error && (
@@ -412,11 +415,14 @@ export default function LoginPage() {
             <div className="lp-divider" />
 
             <p className="lp-legal">
-              By continuing, you agree to Gumboot's Terms of Service and Privacy Policy.
+              By continuing, you agree to Gumboot&apos;s Terms of Service and Privacy Policy.
             </p>
             <p className="lp-signup-row">
               New to Gumboot?{" "}
-              <Link href="/auth/signup" className="lp-signup-link">
+              <Link
+                href={nextPath ? `/auth/signup?next=${encodeURIComponent(nextPath)}` : "/auth/signup"}
+                className="lp-signup-link"
+              >
                 Create an account
               </Link>
             </p>

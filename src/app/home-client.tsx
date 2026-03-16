@@ -133,6 +133,33 @@ const styles = `
     display: block;
     color: inherit;
   }
+  .job-row-inner {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .job-row-badge {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    border: 1px solid rgba(229,229,229,0.10);
+    background: rgba(229,229,229,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .job-row-badge img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+    display: block;
+  }
+  .job-row-copy {
+    min-width: 0;
+    flex: 1;
+  }
   .job-row:hover { background: rgba(229,229,229,0.05); }
   .job-row.selected {
     background: rgba(38,166,154,0.10);
@@ -161,10 +188,12 @@ const styles = `
     font-size: 11px;
     color: rgba(229,229,229,0.38);
     display: flex;
-    gap: 6px;
+    gap: 8px;
     align-items: center;
+    flex-wrap: wrap;
   }
   .job-row-price { color: #26A69A; font-weight: 500; }
+  .job-row-location { color: rgba(229,229,229,0.52); }
   .job-row-dot   { color: rgba(229,229,229,0.18); }
   .job-row-coords { color: rgba(229,229,229,0.26); font-variant-numeric: tabular-nums; }
 
@@ -250,6 +279,55 @@ const styles = `
   }
 `;
 
+function resolveMediaUrl(path: string | undefined, apiOrigin: string): string | null {
+  if (!path) return null;
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  if (path.startsWith("/")) return `${apiOrigin}${path}`;
+  return `${apiOrigin}/${path}`;
+}
+
+function getJobTypeImageUrl(job: Job, apiOrigin: string) {
+  return resolveMediaUrl(job.jobTypeIconPath || job.imageUrl || undefined, apiOrigin) || "/globe.svg";
+}
+
+function getLocationSummary(job: Job) {
+  const raw = (job.raw ?? {}) as {
+    suburb?: unknown;
+    city?: unknown;
+    address?: { suburb?: unknown; city?: unknown } | string | null;
+  };
+  const addressObject =
+    raw.address && typeof raw.address === "object" && !Array.isArray(raw.address)
+      ? raw.address
+      : null;
+  const suburb =
+    typeof addressObject?.suburb === "string"
+      ? addressObject.suburb
+      : typeof raw.suburb === "string"
+        ? raw.suburb
+        : "";
+  const city =
+    typeof addressObject?.city === "string"
+      ? addressObject.city
+      : typeof raw.city === "string"
+        ? raw.city
+        : job.city || "";
+
+  const cleanSuburb = suburb.trim();
+  const cleanCity = city.trim();
+  if (cleanSuburb && cleanCity) return `${cleanSuburb}, ${cleanCity}`;
+  if (cleanCity) return cleanCity;
+  if (cleanSuburb) return cleanSuburb;
+
+  const addressText = (job.addressText ?? "").trim();
+  if (!addressText) return "Location pending";
+  const parts = addressText
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts[0] || addressText;
+}
+
 export default function HomeClient() {
   const router = useRouter();
   const { user } = useMe();
@@ -303,10 +381,10 @@ export default function HomeClient() {
   const onApply = useCallback(
     (jobId: string) => {
       if (!user) {
-        router.push(`/auth/login?next=${encodeURIComponent(`/?jobId=${jobId}`)}`);
+        router.push(`/auth/login?next=${encodeURIComponent(`/jobs/${jobId}/apply`)}`);
         return;
       }
-      console.log("onApply(jobId):", jobId);
+      router.push(`/jobs/${jobId}/apply`);
     },
     [router, user]
   );
@@ -369,21 +447,26 @@ export default function HomeClient() {
                   onClick={() => openJobDrawer(j)}
                   className={`job-row${selectedJob?.id === j.id ? " selected" : ""}`}
                 >
-                  <div className="job-row-title">{j.title}</div>
-                  <div className="job-row-type">{j.jobTypeName || "General"}</div>
-                  <div className="job-row-meta">
-                    <span className="job-row-price">{j.price != null ? `$${j.price}` : "—"}</span>
-                    <span className="job-row-dot">·</span>
-                    <span className="job-row-coords">
-                      {j.lat.toFixed(3)}, {j.lng.toFixed(3)}
-                    </span>
+                  <div className="job-row-inner">
+                    <div className="job-row-badge" aria-hidden="true">
+                      <img src={getJobTypeImageUrl(j, apiOrigin)} alt="" />
+                    </div>
+                    <div className="job-row-copy">
+                      <div className="job-row-title">{j.title}</div>
+                      <div className="job-row-type">{j.jobTypeName || "General"}</div>
+                      <div className="job-row-meta">
+                        <span className="job-row-location">{getLocationSummary(j)}</span>
+                        <span className="job-row-dot">·</span>
+                        <span className="job-row-price">{j.price != null ? `$${j.price}` : "—"}</span>
+                      </div>
+                    </div>
                   </div>
                 </button>
               ))}
         </div>
       </div>
     ),
-    [filteredJobs, selectedJob, mode, error, loadingJobs, openJobDrawer]
+    [filteredJobs, selectedJob, mode, error, loadingJobs, openJobDrawer, apiOrigin]
   );
 
   return (

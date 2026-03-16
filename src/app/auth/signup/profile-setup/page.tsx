@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 const PROFILE_DRAFT_KEY = "gumboot_signup_profile_setup";
@@ -154,6 +154,8 @@ function readDraft(): ProfileDraft {
 
 export default function ProfileSetupPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath = searchParams.get("next");
   const [bio, setBio] = useState(() => readDraft().bio);
   const [profilePhotoName, setProfilePhotoName] = useState(
     () => readDraft().profilePhotoName
@@ -189,7 +191,11 @@ export default function ProfileSetupPage() {
       return;
     }
     saveDraft({ bio: bio.trim(), profilePhotoName, selfiePhotoName, idPhotoName });
-    router.push("/auth/signup/payment-setup");
+    router.push(
+      nextPath
+        ? `/auth/signup/payment-setup?next=${encodeURIComponent(nextPath)}`
+        : "/auth/signup/payment-setup"
+    );
   }
 
   return (

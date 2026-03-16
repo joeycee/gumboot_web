@@ -141,6 +141,7 @@ const LINKS = {
     { label: "Sign up", href: "/auth/signup" },
     { label: "Sign in", href: "/auth/login" },
     { label: "Profile", href: "/profile" },
+    { label: "Wallet & payments", href: "/profile/payments" },
     { label: "Dashboard", href: "/" },
   ],
   company: [

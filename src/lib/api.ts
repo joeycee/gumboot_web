@@ -1,26 +1,58 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL!;
 const AUTH_TOKEN_KEY = "gumboot_token";
+const FALLBACK_AUTH_TOKEN_KEY = "token";
+export const AUTH_CHANGED_EVENT = "gumboot-auth-changed";
+const APP_SECRET_KEY =
+  process.env.NEXT_PUBLIC_API_SECRET_KEY ??
+  process.env.SECRETKEY ??
+  "";
+const APP_PUBLISH_KEY =
+  process.env.NEXT_PUBLIC_API_PUBLISH_KEY ??
+  process.env.PUBLISHABLEKEY ??
+  "";
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
+export class ApiError extends Error {
+  status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 function readAuthToken(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(AUTH_TOKEN_KEY);
+  return (
+    window.localStorage.getItem(AUTH_TOKEN_KEY) ||
+    window.localStorage.getItem(FALLBACK_AUTH_TOKEN_KEY)
+  );
 }
 
 export function setAuthToken(token: string) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(AUTH_TOKEN_KEY, token);
+  window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
 }
 
 export function clearAuthToken() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(AUTH_TOKEN_KEY);
+  window.localStorage.removeItem(FALLBACK_AUTH_TOKEN_KEY);
+  window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
 }
 
 export async function api<T>(
   path: string,
-  opts: { method?: Method; body?: unknown; headers?: Record<string, string>; auth?: boolean } = {}
+  opts: {
+    method?: Method;
+    body?: unknown;
+    headers?: Record<string, string>;
+    auth?: boolean;
+    includeAppKeys?: boolean;
+  } = {}
 ): Promise<T> {
   const token = readAuthToken();
   const shouldAttachAuth = opts.auth !== false;
@@ -30,6 +62,8 @@ export async function api<T>(
     method: opts.method ?? "GET",
     headers: {
       ...(opts.body ? { "Content-Type": "application/json" } : {}),
+      ...(opts.includeAppKeys && APP_SECRET_KEY ? { secret_key: APP_SECRET_KEY } : {}),
+      ...(opts.includeAppKeys && APP_PUBLISH_KEY ? { publish_key: APP_PUBLISH_KEY } : {}),
       ...(shouldAttachAuth && token && !hasAuthHeader ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts.headers ?? {}),
     },
@@ -47,7 +81,7 @@ export async function api<T>(
 
   const envelope = data as { success?: boolean; message?: string };
   if (!res.ok || envelope?.success === false) {
-    throw new Error(envelope?.message || `HTTP ${res.status}`);
+    throw new ApiError(envelope?.message || `HTTP ${res.status}`, res.status);
   }
 
   return data as T;

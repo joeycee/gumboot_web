@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { me } from "@/lib/auth";
+import { AUTH_CHANGED_EVENT } from "@/lib/api";
 
 type MeResponse = {
   body?: {
@@ -40,6 +41,22 @@ export function useMe() {
 
   useEffect(() => {
     refresh();
+  }, []);
+
+  useEffect(() => {
+    const handleRefresh = () => {
+      void refresh();
+    };
+
+    window.addEventListener("focus", handleRefresh);
+    window.addEventListener("storage", handleRefresh);
+    window.addEventListener(AUTH_CHANGED_EVENT, handleRefresh);
+
+    return () => {
+      window.removeEventListener("focus", handleRefresh);
+      window.removeEventListener("storage", handleRefresh);
+      window.removeEventListener(AUTH_CHANGED_EVENT, handleRefresh);
+    };
   }, []);
 
   return { user, raw, loading, refresh };

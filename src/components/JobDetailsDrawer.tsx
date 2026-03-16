@@ -160,6 +160,34 @@ const styles = `
     line-height: 1.2;
     margin: 0 0 8px;
   }
+  .jdd-hero {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  .jdd-type-badge {
+    width: 58px;
+    height: 58px;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+    box-shadow: 0 10px 24px rgba(15,23,42,0.06);
+  }
+  .jdd-type-badge img {
+    width: 34px;
+    height: 34px;
+    object-fit: contain;
+    display: block;
+  }
+  .jdd-hero-copy {
+    min-width: 0;
+    flex: 1;
+  }
   .jdd-type {
     font-size: 10px;
     font-weight: 700;
@@ -167,6 +195,29 @@ const styles = `
     text-transform: uppercase;
     color: var(--muted);
     margin: 0 0 10px;
+  }
+  .jdd-top-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .jdd-top-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 999px;
+    padding: 7px 10px;
+    border: 1px solid var(--line);
+    background: #ffffff;
+    font-size: 11px;
+    color: rgba(15,23,42,0.72);
+  }
+  .jdd-top-chip.price {
+    color: rgba(15,23,42,0.92);
+    font-weight: 800;
+    background: rgba(28,143,178,0.08);
+    border-color: rgba(28,143,178,0.18);
   }
   .jdd-price {
     font-size: 20px;
@@ -502,6 +553,57 @@ function resolveMediaUrl(path: string | undefined, apiOrigin: string): string | 
   return `${apiOrigin}/${path}`;
 }
 
+function getJobTypeImageUrl(job: Job, apiOrigin: string) {
+  return resolveMediaUrl(job.jobTypeIconPath || job.imageUrl || undefined, apiOrigin) || "/globe.svg";
+}
+
+function getLocationParts(job: Job) {
+  const raw = (job.raw ?? {}) as {
+    suburb?: unknown;
+    city?: unknown;
+    address?: { suburb?: unknown; city?: unknown } | string | null;
+  };
+  const addressObject =
+    raw.address && typeof raw.address === "object" && !Array.isArray(raw.address)
+      ? raw.address
+      : null;
+
+  const suburb =
+    typeof addressObject?.suburb === "string"
+      ? addressObject.suburb
+      : typeof raw.suburb === "string"
+        ? raw.suburb
+        : "";
+  const city =
+    typeof addressObject?.city === "string"
+      ? addressObject.city
+      : typeof raw.city === "string"
+        ? raw.city
+        : job.city || "";
+
+  return {
+    suburb: suburb.trim(),
+    city: city.trim(),
+  };
+}
+
+function getLocationSummary(job: Job) {
+  const { suburb, city } = getLocationParts(job);
+  if (suburb && city) return `${suburb}, ${city}`;
+  if (city) return city;
+  if (suburb) return suburb;
+
+  const addressText = (job.addressText ?? "").trim();
+  if (!addressText) return "Location pending";
+  const parts = addressText
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length >= 3) return `${parts[1]}, ${parts[2]}`;
+  if (parts.length >= 2) return `${parts[0]}, ${parts[1]}`;
+  return parts[0] || "Location pending";
+}
+
 function RatingStars({ value }: { value: number }) {
   const rounded = Math.max(0, Math.min(5, Math.round(value)));
   return (
@@ -633,6 +735,8 @@ function DrawerContent({
   const rating = job.userAverageRating ?? 0;
   const ratingCount = job.userRatingCount ?? 0;
   const hasDate = job.date || job.expDate;
+  const typeImageUrl = getJobTypeImageUrl(job, apiOrigin);
+  const locationSummary = getLocationSummary(job);
 
   // stop background scroll while viewer open
   useEffect(() => {
@@ -657,18 +761,27 @@ function DrawerContent({
 
       <div className="jdd-surface">
         <div className="jdd-body">
-          <h2 className="jdd-title">{job.title || "Untitled Job"}</h2>
-          <p className="jdd-type">{job.jobTypeName || "General"}</p>
-          <p className={`jdd-price${job.price == null ? " unknown" : ""}`}>
-            {job.price != null ? `$${job.price}` : "Price not set"}
-          </p>
+          <div className="jdd-hero">
+            <div className="jdd-type-badge" aria-hidden="true">
+              <img src={typeImageUrl} alt="" />
+            </div>
+            <div className="jdd-hero-copy">
+              <h2 className="jdd-title">{job.title || "Untitled Job"}</h2>
+              <p className="jdd-type">{job.jobTypeName || "General"}</p>
+              <div className="jdd-top-meta">
+                <span className="jdd-top-chip">{locationSummary}</span>
+                <span className={`jdd-top-chip price${job.price == null ? " unknown" : ""}`}>
+                  {job.price != null ? `$${job.price}` : "Price not set"}
+                </span>
+              </div>
+            </div>
+          </div>
 
           <div className="jdd-divider" />
 
           <p className="jdd-section-label">Location</p>
           <div className="jdd-location-card">
-            <p className="jdd-location-city">{job.city || "City unknown"}</p>
-            <p className="jdd-location-addr">{job.addressText || "Address unavailable"}</p>
+            <p className="jdd-location-city">{locationSummary}</p>
           </div>
 
           {(hasDate || job.shiftTime) && (

@@ -205,6 +205,7 @@ export default function PaymentSetupPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const required = useMemo(() => searchParams.get("required") === "1", [searchParams]);
+  const nextPath = useMemo(() => searchParams.get("next"), [searchParams]);
   const [form, setForm] = useState<PaymentDraft>(() => readDraft());
   const [error, setError] = useState<string | null>(null);
 
@@ -238,13 +239,13 @@ export default function PaymentSetupPage() {
     }
     const next: PaymentDraft = { ...form, skipped: false };
     saveDraft(next);
-    router.push("/profile");
+    router.push(nextPath || "/profile");
   }
 
   function handleSkip() {
     const next: PaymentDraft = { ...form, skipped: true };
     saveDraft(next);
-    router.push("/profile");
+    router.push(nextPath || "/profile");
   }
 
   return (
