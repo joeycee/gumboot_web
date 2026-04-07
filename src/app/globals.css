@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
 :root{
+  --font-sans: "DM Sans", "Avenir Next", "Segoe UI", sans-serif;
+  --font-serif: "DM Serif Display", "Iowan Old Style", "Palatino Linotype", serif;
+  --font-mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace;
+
   /* Core */
   --bg-0: #2A3439;     /* Gunmetal (app background) */
   --bg-1: #3E4A51;     /* Charcoal (panels) */
@@ -31,8 +35,6 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -45,7 +47,7 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
 }
 
 html, body {
@@ -125,7 +127,7 @@ button {
 
 .gb-brand-text {
   color: var(--text-1);
-  font-family: var(--font-geist-sans), sans-serif;
+  font-family: var(--font-sans);
   font-size: 18px;
   font-weight: 600;
   letter-spacing: 0.01em;

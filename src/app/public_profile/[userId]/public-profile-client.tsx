@@ -849,6 +849,14 @@ function getJobPrice(job?: PublicProfileJob | null) {
   return `$${value}`;
 }
 
+function extractCompletedJob(item?: PublicProfileJob | WorkerCompletedJob | null) {
+  if (!item) return null;
+  if ("jobId" in item) {
+    return item.jobId ?? null;
+  }
+  return item;
+}
+
 function normalizeCompletedJobs(
   profile: ResolvedPublicProfile | null,
   workerProfileBody: WorkerPublicProfileBody | null,
@@ -866,13 +874,13 @@ function normalizeCompletedJobs(
 
   if (profile.source === "worker") {
     const directJobs = workerJobs
-      .map((item) => item?.jobId)
+      .map(extractCompletedJob)
       .filter((job): job is PublicProfileJob => Boolean(job));
 
     if (directJobs.length > 0) return directJobs;
 
     return (profile.body.completedJobs ?? [])
-      .map((item) => item?.jobId)
+      .map(extractCompletedJob)
       .filter((job): job is PublicProfileJob => Boolean(job));
   }
 

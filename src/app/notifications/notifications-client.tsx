@@ -315,9 +315,15 @@ export default function NotificationsClient() {
     };
   }
 
-  async function resolveCoordinates() {
+  async function resolveCoordinates(): Promise<{ latitude: number; longitude: number; address: string }> {
     const stored = getStoredCoordinates();
-    if (stored.latitude != null && stored.longitude != null) return stored;
+    if (stored.latitude != null && stored.longitude != null) {
+      return {
+        latitude: stored.latitude,
+        longitude: stored.longitude,
+        address: stored.address,
+      };
+    }
 
     if (typeof window === "undefined" || !navigator.geolocation) {
       throw new Error("No saved location found and browser geolocation is unavailable.");

@@ -486,6 +486,7 @@ function getSelectedDateFallback(events: CalendarEvent[], monthDate: Date, curre
 
 export default function JobsCalendarPage() {
   const { user, loading: loadingMe } = useMe();
+  const hasUser = Boolean(user);
   const [scope, setScope] = useState<CalendarScope>("posted");
   const [monthDate, setMonthDate] = useState(() => startOfMonth(new Date()));
   const [selectedDateKey, setSelectedDateKey] = useState(() => formatDateKey(new Date()));
@@ -495,7 +496,7 @@ export default function JobsCalendarPage() {
 
   useEffect(() => {
     if (loadingMe) return;
-    if (!user) { setError(null); setLoading(false); setEvents([]); return; }
+    if (!hasUser) { setError(null); setLoading(false); setEvents([]); return; }
 
     let cancelled = false;
 
@@ -531,7 +532,7 @@ export default function JobsCalendarPage() {
     })();
 
     return () => { cancelled = true; };
-  }, [loadingMe, scope, user]);
+  }, [hasUser, loadingMe, scope, user]);
 
   useEffect(() => {
     setSelectedDateKey((cur) => getSelectedDateFallback(events, monthDate, cur));
@@ -607,12 +608,12 @@ export default function JobsCalendarPage() {
               {!loading && error && (
                 <div className="jc-status error">{error}</div>
               )}
-              {!loading && !error && !user && !loadingMe && (
+              {!loading && !error && !hasUser && !loadingMe && (
                 <div className="jc-status">
                   Please <Link className="jc-login-link" href="/auth/login">log in</Link> to view your calendar.
                 </div>
               )}
-              {!loading && !error && user && selectedEvents.length === 0 && (
+              {!loading && !error && hasUser && selectedEvents.length === 0 && (
                 <div className="jc-empty">
                   No {scope === "posted" ? "posted" : "applied"} jobs on this date.
                 </div>

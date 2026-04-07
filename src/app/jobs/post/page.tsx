@@ -1054,10 +1054,26 @@ export default function PostJobPage() {
         addressJson = { message: addressText };
       }
 
-      if (!addressRes.ok) throw new Error(addressJson?.message || `add_address failed (${addressRes.status})`);
+      const addressErrorMessage =
+        typeof addressJson.message === "string" && addressJson.message.trim()
+          ? addressJson.message
+          : `add_address failed (${addressRes.status})`;
+      if (!addressRes.ok) throw new Error(addressErrorMessage);
 
-      const addressBody = addressJson?.body ?? addressJson?.data ?? addressJson;
-      const addressId = addressBody?._id || addressBody?.id || addressBody?.address?._id || "";
+      const addressBodySource =
+        typeof addressJson.body === "object" && addressJson.body !== null
+          ? addressJson.body
+          : typeof addressJson.data === "object" && addressJson.data !== null
+            ? addressJson.data
+            : addressJson;
+      const addressBody = addressBodySource as {
+        _id?: string;
+        id?: string;
+        address?: { _id?: string } | string;
+      };
+      const nestedAddress =
+        typeof addressBody.address === "object" && addressBody.address !== null ? addressBody.address : null;
+      const addressId = addressBody._id || addressBody.id || nestedAddress?._id || "";
       if (!addressId) throw new Error("add_address succeeded but no addressId returned");
 
       // 2) create job
@@ -1069,7 +1085,7 @@ export default function PostJobPage() {
         throw new Error("We could not resolve the signed-in account for this job post. Please refresh and try again.");
       }
 
-      const payload = {
+      const payload: Record<string, string | boolean> = {
         job_title: title.trim(),
         job_type: String(jobTypeId),
         address: String(addressId),
@@ -1086,7 +1102,7 @@ export default function PostJobPage() {
         shift_time: mapShiftTime(timeMode),
         price_assured: "0",
         userId: me._id,
-      } as Record<string, string>;
+      };
 
       if (timeMode === "exact-time" && exactTime) {
         payload.exact_time = exactTime;
@@ -1096,7 +1112,7 @@ export default function PostJobPage() {
 
       const fd = new FormData();
       Object.entries(payload).forEach(([key, value]) => {
-        fd.append(key, value);
+        fd.append(key, String(value));
       });
       const filesToSubmit = files.length > 0 ? files : [createBackendPlaceholderImageFile()];
       for (const f of filesToSubmit) fd.append("image", f);
@@ -1118,7 +1134,13 @@ export default function PostJobPage() {
 
       console.debug("[post-job] add_job response", jobJson?.body ?? jobJson?.data ?? jobJson);
 
-      if (!jobRes.ok) throw new Error(jobJson?.message || jobJson?.error || `add_job failed (${jobRes.status})`);
+      const jobErrorMessage =
+        typeof jobJson.message === "string" && jobJson.message.trim()
+          ? jobJson.message
+          : typeof jobJson.error === "string" && jobJson.error.trim()
+            ? jobJson.error
+            : `add_job failed (${jobRes.status})`;
+      if (!jobRes.ok) throw new Error(jobErrorMessage);
 
       clearPostJobDraft();
       router.push("/?posted=1");

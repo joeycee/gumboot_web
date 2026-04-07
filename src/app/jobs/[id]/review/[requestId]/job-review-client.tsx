@@ -8,6 +8,7 @@ import {
   getApplicationWorker,
   getApplicationWorkerId,
   normalizeApplicationsResponse,
+  type JobApplication,
 } from "@/lib/applications";
 import { addReview } from "@/lib/reviews";
 import {

@@ -30,6 +30,7 @@ export type AppNotification = {
   message?: string;
   type?: string | number;
   status?: string | number;
+  jobStatus?: string | number;
   createdAt?: string;
   jobId?: AppNotificationJob | string;
   workerId?: string;

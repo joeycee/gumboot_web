@@ -66,10 +66,7 @@ function pickOwnerName(value: unknown): string | undefined {
  * This tries common patterns and falls back to (0,0) filtered out later.
  */
 export function normalizeJobs(apiBody: unknown): Job[] {
-  const maybe = apiBody as
-    | { body?: unknown; data?: unknown; jobs?: unknown }
-    | { body?: { jobs?: unknown }; data?: { jobs?: unknown } }
-    | null;
+  const maybe = apiBody as { body?: unknown; data?: unknown; jobs?: unknown } | null;
   const list =
     maybe?.body && typeof maybe.body === "object" && maybe.body !== null && "jobs" in maybe.body
       ? (maybe.body as { jobs?: unknown }).jobs
@@ -81,7 +78,7 @@ export function normalizeJobs(apiBody: unknown): Job[] {
   let droppedForInvalidCoords = 0;
 
   const normalized = list
-    .map((j: unknown) => {
+    .map<Job | null>((j: unknown) => {
       const row = (j ?? {}) as Record<string, unknown>;
       const id = row._id ?? row.id ?? row.job_id;
       const title = String(row.title ?? row.job_title ?? row.name ?? "Job");
@@ -99,7 +96,7 @@ export function normalizeJobs(apiBody: unknown): Job[] {
       const lng2 = toNumber(location?.lng ?? row.lng);
 
       const address = (row.address ?? null) as
-        | { location?: { coordinates?: unknown; lat?: unknown; lng?: unknown }; address?: unknown }
+        | { location?: { coordinates?: unknown; lat?: unknown; lng?: unknown }; address?: unknown; city?: unknown }
         | null;
       const coords2 = parseCoordinatePair(address?.location?.coordinates);
       const lat3 = coords2?.lat ?? null;
@@ -172,12 +169,15 @@ export function normalizeJobs(apiBody: unknown): Job[] {
         return null;
       }
 
+      const resolvedLat = lat;
+      const resolvedLng = lng as number;
+
       return {
         id: String(id ?? crypto.randomUUID()),
         title,
         price,
-        lat,
-        lng,
+        lat: resolvedLat,
+        lng: resolvedLng,
         jobTypeName: typeof jobType?.name === "string" ? jobType.name : undefined,
         jobTypeIconPath: jobTypeIconPath || undefined,
         imageUrl: imageUrl || undefined,
