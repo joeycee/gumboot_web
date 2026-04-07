@@ -921,9 +921,13 @@ export function Navbar() {
     () => (isAuthenticated ? [...NAV_LINKS, ...AUTH_NAV_LINKS] : NAV_LINKS),
     [isAuthenticated]
   );
+  const visibleJobLinks = useMemo(
+    () => JOB_LINKS.filter(({ href }) => isAuthenticated || href !== "/jobs/manage"),
+    [isAuthenticated]
+  );
   const jobsMenuActive = useMemo(
-    () => JOB_LINKS.some(({ href }) => isActivePath(pathname, href)),
-    [pathname]
+    () => visibleJobLinks.some(({ href }) => isActivePath(pathname, href)),
+    [pathname, visibleJobLinks]
   );
 
   const meRecord = (user ?? null) as {
@@ -1464,7 +1468,7 @@ export function Navbar() {
               </button>
               {jobsMenuOpen ? (
                 <div className="nav-menu-panel" role="menu" aria-label="Jobs menu">
-                  {JOB_LINKS.map(({ href, label, note }) => (
+                  {visibleJobLinks.map(({ href, label, note }) => (
                     <Link
                       key={href}
                       href={href}
@@ -1738,7 +1742,7 @@ export function Navbar() {
 
                 <div className="nav-mobile-group">
                   <div className="nav-mobile-section-title">Jobs</div>
-                  {JOB_LINKS.map(({ href, label, note }) => (
+                  {visibleJobLinks.map(({ href, label, note }) => (
                     <Link
                       key={`mobile-jobs-${href}`}
                       href={href}
