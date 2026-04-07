@@ -461,7 +461,8 @@ function isObject(value: unknown): value is Record<string, unknown> {
 function normalizeJobDetails(payload: JobDetailsEnvelope): JobDetails | null {
   const body = payload.body;
   if (!body || !isObject(body)) return null;
-  return isObject(body.getdetails) ? (body.getdetails as JobDetails) : (body as JobDetails);
+  const bodyRecord = body as Record<string, unknown>;
+  return isObject(bodyRecord.getdetails) ? (bodyRecord.getdetails as JobDetails) : (body as JobDetails);
 }
 
 function getJobOwnerId(job?: JobDetails | null) {
