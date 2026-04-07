@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ApiEnvelope } from "@/lib/apiTypes";
 import { ApiError } from "@/lib/api";
 import {
@@ -10,12 +10,16 @@ import {
   getApplicationJobId,
   getApplicationWorker,
   normalizeApplicationsResponse,
+  updateJobLifecycleStatus,
   updateJobApplicationStatus,
+  uploadWorkerJobImages,
   type JobApplication,
 } from "@/lib/applications";
 import { resolveChatMediaUrl, resolveUserImageUrl } from "@/lib/messages";
-import { extractCardsFromResponse, getSavedCards, recordJobPayment } from "@/lib/payments";
+import { deleteJob as deleteManagedJob } from "@/lib/jobManagement";
+import { extractCardsFromResponse, getSavedCards } from "@/lib/payments";
 import { buildPublicProfileHref } from "@/lib/publicProfiles";
+import { addReview } from "@/lib/reviews";
 import { useMe } from "@/lib/useMe";
 
 type JobTypeValue = string | { _id?: string; name?: string } | null | undefined;
@@ -24,9 +28,11 @@ type AddressValue =
   | { _id?: string; address?: string; city?: string; state?: string; country?: string; location?: { coordinates?: [number, number] } }
   | null | undefined;
 type UserValue =
-  | { _id?: string; firstname?: string; lastname?: string; image?: string; bio?: string; rating?: number; reviews?: number }
+  | string
+  | { _id?: string; firstname?: string; lastname?: string; name?: string; image?: string; bio?: string; rating?: number; reviews?: number }
   | null | undefined;
 type MeUser = { _id?: string; firstname?: string; lastname?: string; role?: string | number };
+type JobImageValue = { _id?: string; url?: string } | null | undefined;
 
 type JobDetails = {
   _id?: string; id?: string;
@@ -35,12 +41,20 @@ type JobDetails = {
   exp_date?: string; date?: string;
   exact_time?: string; shift_time?: string; est_time?: string;
   job_status?: string | number;
+  price?: string | number;
   offered_price?: string | number;
   job_type?: JobTypeValue;
   address?: AddressValue;
   location?: string | { coordinates?: [number, number] } | null;
   userId?: UserValue;
+  workerId?: string | UserValue;
   image?: Array<{ url?: string }> | null;
+  image_before_job?: JobImageValue[] | null;
+  image_after_job?: JobImageValue[] | null;
+  jobRequestedData?: JobApplication[] | JobApplication | null;
+  jobRequestedDataNew?: JobApplication | null;
+  ratedbyme?: number;
+  jobreviewData?: unknown;
   raw?: unknown;
 };
 
@@ -56,6 +70,7 @@ const STATUS_HUE: Record<string, string> = {
   "4": "#F87171", "5": "#94A3B8", "6": "#4ADE80",
   "7": "#94A3B8", "8": "#FB923C", "9": "#FB923C",
 };
+const LOCKED_JOB_STATUSES = new Set(["2", "3", "6", "7", "8", "9"]);
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600&display=swap');
@@ -436,28 +451,6 @@ const styles = `
     color: var(--faint); letter-spacing: 0.06em;
   }
 
-  /* Raw */
-  .raw-toggle {
-    display: flex; align-items: center; gap: 6px;
-    background: none; border: none; cursor: pointer;
-    font-family: 'Geist', sans-serif;
-    font-size: 10px; font-weight: 500;
-    letter-spacing: 0.10em; text-transform: uppercase;
-    color: var(--faint); padding: 0;
-    transition: color 0.14s; margin-top: 12px;
-  }
-  .raw-toggle:hover { color: var(--sub); }
-  .raw-icon { display: inline-block; transition: transform 0.18s; font-size: 8px; }
-  .raw-icon.open { transform: rotate(90deg); }
-  .raw-pre {
-    margin-top: 10px; font-size: 10px;
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    background: rgba(0,0,0,0.24); border: 1px solid var(--border);
-    border-radius: var(--r-sm); padding: 14px;
-    overflow: auto; color: rgba(255,255,255,0.30);
-    line-height: 1.6; max-height: 260px;
-  }
-
   /* ── APPLY CARD ── */
   .jdc-apply {
     background: var(--card);
@@ -500,6 +493,91 @@ const styles = `
     font-size: 11px; color: var(--faint);
     text-align: center; line-height: 1.6;
   }
+  .jdc-subcard {
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 14px;
+    background: rgba(255,255,255,0.04);
+    padding: 14px;
+    display: grid;
+    gap: 10px;
+  }
+  .jdc-status-note {
+    font-size: 12px;
+    color: rgba(234,234,234,0.76);
+    line-height: 1.6;
+  }
+  .jdc-inline-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .jdc-inline-btn {
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.08);
+    color: var(--text);
+    border-radius: 12px;
+    padding: 11px 14px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .jdc-inline-btn.primary {
+    background: #2097BD;
+    border-color: transparent;
+    color: #fff;
+  }
+  .jdc-inline-btn.success {
+    background: rgba(74,222,128,0.18);
+    border-color: rgba(74,222,128,0.24);
+    color: #d1fae5;
+  }
+  .jdc-inline-btn.warn {
+    background: rgba(251,191,36,0.18);
+    border-color: rgba(251,191,36,0.24);
+    color: #fde68a;
+  }
+  .jdc-inline-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .jdc-upload-grid {
+    display: grid;
+    gap: 12px;
+  }
+  .jdc-upload-field {
+    display: grid;
+    gap: 8px;
+  }
+  .jdc-upload-label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  .jdc-upload-input {
+    width: 100%;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(16,22,28,0.55);
+    color: var(--text);
+    padding: 10px 12px;
+    font: inherit;
+  }
+  .jdc-image-strip {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .jdc-image-strip img {
+    width: 72px;
+    height: 72px;
+    object-fit: cover;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.10);
+  }
 
   /* ── SKELETON ── */
   .sk {
@@ -538,14 +616,63 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
 
+function hasApplicationIdentity(application: unknown): application is JobApplication {
+  if (!isObject(application)) return false;
+  const record = application as Record<string, unknown>;
+  return typeof record._id === "string" && record._id.trim().length > 0;
+}
+
 function normalizeJobDetails(payload: JobDetailsEnvelope): JobDetails | null {
   const body = payload.body;
   if (!body || !isObject(body)) return null;
-  const details = isObject(body.getdetails) ? (body.getdetails as JobDetails) : (body as JobDetails);
+  const bodyRecord = body as Record<string, unknown>;
+  const details = isObject(bodyRecord.getdetails) ? (bodyRecord.getdetails as JobDetails) : (body as JobDetails);
   const rawPrice =
     typeof body.offered_price === "string" || typeof body.offered_price === "number"
       ? body.offered_price : undefined;
-  return { ...details, offered_price: details.offered_price ?? rawPrice, raw: body };
+  const normalizedPrice =
+    details.offered_price ??
+    details.price ??
+    rawPrice ??
+    (typeof (body as { price?: unknown }).price === "string" || typeof (body as { price?: unknown }).price === "number"
+      ? (body as { price?: string | number }).price
+      : undefined);
+  return {
+    ...details,
+    price: details.price ?? normalizedPrice,
+    offered_price: normalizedPrice,
+    image_before_job: Array.isArray(details.image_before_job)
+      ? details.image_before_job
+      : Array.isArray((body as { getdetails?: { image_before_job?: JobImageValue[] } }).getdetails?.image_before_job)
+        ? (body as { getdetails?: { image_before_job?: JobImageValue[] } }).getdetails?.image_before_job ?? []
+        : [],
+    image_after_job: Array.isArray(details.image_after_job)
+      ? details.image_after_job
+      : Array.isArray((body as { getdetails?: { image_after_job?: JobImageValue[] } }).getdetails?.image_after_job)
+        ? (body as { getdetails?: { image_after_job?: JobImageValue[] } }).getdetails?.image_after_job ?? []
+        : [],
+    jobRequestedData:
+      (Array.isArray((body as { jobRequestedData?: JobApplication[] }).jobRequestedData)
+        ? (body as { jobRequestedData?: JobApplication[] }).jobRequestedData
+        : details.jobRequestedData) ?? [],
+    jobRequestedDataNew:
+      (hasApplicationIdentity((body as { jobRequestedDataNew?: unknown }).jobRequestedDataNew)
+        ? ((body as { jobRequestedDataNew?: JobApplication }).jobRequestedDataNew ?? null)
+        : hasApplicationIdentity(details.jobRequestedDataNew)
+          ? details.jobRequestedDataNew
+          : null),
+    ratedbyme:
+      typeof (body as { ratedbyme?: unknown }).ratedbyme === "number"
+        ? ((body as { ratedbyme?: number }).ratedbyme ?? 0)
+        : typeof details.ratedbyme === "number"
+          ? details.ratedbyme
+          : 0,
+    jobreviewData:
+      (body as { jobreviewData?: unknown }).jobreviewData ??
+      details.jobreviewData ??
+      null,
+    raw: body,
+  };
 }
 
 function formatDate(v?: string | null) {
@@ -606,12 +733,12 @@ function getAddressText(a?: AddressValue) {
 }
 
 function getPosterName(u?: UserValue) {
-  if (!u || !isObject(u)) return null;
-  return [u.firstname, u.lastname].filter(Boolean).join(" ").trim() || null;
+  if (!u || typeof u === "string" || !isObject(u)) return null;
+  return [u.firstname, u.lastname].filter(Boolean).join(" ").trim() || u.name || null;
 }
 
 function getPosterInitials(u?: UserValue) {
-  if (!u || !isObject(u)) return "JB";
+  if (!u || typeof u === "string" || !isObject(u)) return "JB";
   return [u.firstname, u.lastname]
     .filter((v): v is string => typeof v === "string" && v.length > 0)
     .map((v) => v[0]?.toUpperCase()).join("") || "JB";
@@ -620,6 +747,13 @@ function getPosterInitials(u?: UserValue) {
 function getGalleryImages(job?: JobDetails | null) {
   if (!job || !Array.isArray(job.image)) return [];
   return job.image.map((i) => resolveChatMediaUrl(i?.url)).filter((v): v is string => Boolean(v));
+}
+
+function getWorkerUploadedImages(images?: JobImageValue[] | null) {
+  if (!Array.isArray(images)) return [];
+  return images
+    .map((image) => resolveChatMediaUrl(image?.url))
+    .filter((value): value is string => Boolean(value));
 }
 
 function getLocationDisplay(job?: JobDetails | null) {
@@ -634,13 +768,11 @@ function getLocationDisplay(job?: JobDetails | null) {
   return "No address provided";
 }
 
-function isWorkerRole(role: unknown) {
-  const value = String(role ?? "").trim().toLowerCase();
-  return value === "2" || value === "worker";
-}
-
 function getJobOwnerId(job?: JobDetails | null) {
-  return job?.userId?._id ?? "";
+  const owner = job?.userId;
+  if (!owner) return "";
+  if (typeof owner === "string") return owner;
+  return owner._id ?? "";
 }
 
 function formatDateTime(value?: string) {
@@ -703,26 +835,46 @@ export default function JobDetailsClient({ id }: { id: string }) {
   const me = (meUser ?? null) as MeUser | null;
   const [job, setJob] = useState<JobDetails | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [rawOpen, setRawOpen] = useState(false);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [hasSavedCard, setHasSavedCard] = useState(false);
-  const [paymentBusy, setPaymentBusy] = useState(false);
-  const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
-  const [paymentError, setPaymentError] = useState<string | null>(null);
   const [applications, setApplications] = useState<JobApplication[]>([]);
   const [applicationsLoading, setApplicationsLoading] = useState(false);
   const [applicationsError, setApplicationsError] = useState<string | null>(null);
   const [applicationAction, setApplicationAction] = useState<string | null>(null);
+  const [workflowMessage, setWorkflowMessage] = useState<string | null>(null);
+  const [workflowError, setWorkflowError] = useState<string | null>(null);
+  const [workflowBusy, setWorkflowBusy] = useState<string | null>(null);
+  const [beforeImages, setBeforeImages] = useState<File[]>([]);
+  const [afterImages, setAfterImages] = useState<File[]>([]);
+  const [reviewRating, setReviewRating] = useState("5");
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewMessage, setReviewMessage] = useState<string | null>(null);
   const [applicationMessage, setApplicationMessage] = useState<string | null>(
     searchParams.get("applied") === "1" ? "Application sent successfully." : null
   );
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const refreshJobDetails = useCallback(async () => {
+    const qs = me?._id ? `?userId=${encodeURIComponent(me._id)}` : "";
+    const res = await fetch(`/api/jobs/${id}${qs}`, { method: "GET", cache: "no-store" });
+    const data = (await res.json()) as JobDetailsEnvelope;
+    if (!res.ok || data.success === false) throw new Error(data.message || `HTTP ${res.status}`);
+    const normalized = normalizeJobDetails(data);
+    if (!normalized) throw new Error("Job details were not available.");
+    setJob(normalized);
+    return normalized;
+  }, [id, me?._id]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         setErr(null); setJob(null);
-        const res = await fetch(`/api/jobs/${id}`, { method: "GET", cache: "no-store" });
+        const qs = me?._id ? `?userId=${encodeURIComponent(me._id)}` : "";
+        const res = await fetch(`/api/jobs/${id}${qs}`, { method: "GET", cache: "no-store" });
         const data = (await res.json()) as JobDetailsEnvelope;
         if (!res.ok || data.success === false) throw new Error(data.message || `HTTP ${res.status}`);
         const normalized = normalizeJobDetails(data);
@@ -735,7 +887,7 @@ export default function JobDetailsClient({ id }: { id: string }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [id]);
+  }, [id, me?._id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -764,7 +916,32 @@ export default function JobDetailsClient({ id }: { id: string }) {
   }, []);
 
   const isPoster = me?._id != null && me._id === getJobOwnerId(job);
-  const canApply = Boolean(me?._id) && isWorkerRole(me?.role) && !isPoster;
+  const canApply = Boolean(me?._id) && !isPoster;
+  const allRequested = useMemo(() => {
+    const raw = job?.jobRequestedData;
+    if (Array.isArray(raw)) return raw;
+    return [];
+  }, [job?.jobRequestedData]);
+  const currentWorkerRequest = useMemo(() => {
+    const direct = job?.jobRequestedDataNew;
+    if (hasApplicationIdentity(direct)) {
+      const worker = getApplicationWorker(direct);
+      if (!me?._id || worker?._id === me._id) return direct;
+    }
+    if (!me?._id) return null;
+    return allRequested.find((request) => {
+      const worker = getApplicationWorker(request);
+      return worker?._id === me._id;
+    }) ?? null;
+  }, [allRequested, job?.jobRequestedDataNew, me?._id]);
+  const posterActiveRequest = useMemo(() => {
+    const acceptedStatuses = new Set(["2", "3", "6", "7", "8", "9"]);
+    return (
+      applications.find((application) => acceptedStatuses.has(String(application.job_status ?? ""))) ??
+      allRequested.find((application) => acceptedStatuses.has(String(application.job_status ?? ""))) ??
+      null
+    );
+  }, [allRequested, applications]);
 
   const loadApplications = useCallback(async () => {
     if (!job?._id || !isPoster) return;
@@ -799,62 +976,78 @@ export default function JobDetailsClient({ id }: { id: string }) {
   const locationText = getLocationDisplay(job);
   const posterName   = getPosterName(job?.userId);
   const posterInitials = getPosterInitials(job?.userId);
-  const posterSrc    = resolveUserImageUrl(job?.userId?.image);
-  const posterHref   = job?.userId?._id
+  const posterSrc    =
+    job?.userId && typeof job.userId !== "string"
+      ? resolveUserImageUrl(job.userId.image)
+      : isPoster
+        ? resolveUserImageUrl((me as { image?: string } | null)?.image)
+        : null;
+  const resolvedPosterName = posterName || (isPoster ? [me?.firstname, me?.lastname].filter(Boolean).join(" ").trim() || "You" : null);
+  const resolvedPosterInitials =
+    posterName
+      ? posterInitials
+      : isPoster
+        ? ([me?.firstname, me?.lastname]
+            .filter((value): value is string => Boolean(value))
+            .map((value) => value[0]?.toUpperCase())
+            .join("") || "YO")
+        : posterInitials;
+  const posterHref   = job?.userId && typeof job.userId !== "string" && job.userId._id
     ? buildPublicProfileHref({
         userId: job.userId._id,
-        kind: "employer",
       })
     : null;
   const galleryImages = useMemo(() => getGalleryImages(job), [job]);
+  const beforeWorkImages = useMemo(() => getWorkerUploadedImages(job?.image_before_job), [job?.image_before_job]);
+  const afterWorkImages = useMemo(() => getWorkerUploadedImages(job?.image_after_job), [job?.image_after_job]);
+  const effectivePrice = useMemo(() => {
+    if (currentWorkerRequest?.offered_price != null && currentWorkerRequest.offered_price !== "") {
+      return currentWorkerRequest.offered_price;
+    }
+    if (posterActiveRequest?.offered_price != null && posterActiveRequest.offered_price !== "") {
+      return posterActiveRequest.offered_price;
+    }
+    return job?.price ?? null;
+  }, [currentWorkerRequest?.offered_price, job?.price, posterActiveRequest?.offered_price]);
   const priceLabel   = useMemo(() => {
-    if (job?.offered_price == null || job?.offered_price === "") return null;
-    return `$${job.offered_price}`;
-  }, [job?.offered_price]);
-  const numericPrice = useMemo(() => {
-    const parsed = Number.parseFloat(String(job?.offered_price ?? ""));
-    return Number.isFinite(parsed) ? parsed : null;
-  }, [job?.offered_price]);
+    const rawPrice = effectivePrice;
+    if (rawPrice == null || rawPrice === "") return null;
+    return `$${rawPrice}`;
+  }, [effectivePrice]);
+  const priceCaption = currentWorkerRequest || posterActiveRequest ? "Offered price" : "Listed price";
 
-  const posterRating  = job?.userId?.rating;
-  const posterReviews = job?.userId?.reviews;
+  const posterRating =
+    job?.userId && typeof job.userId !== "string" ? job.userId.rating : undefined;
+  const posterReviews =
+    job?.userId && typeof job.userId !== "string" ? job.userId.reviews : undefined;
+  const currentWorkerStatus = currentWorkerRequest?.job_status != null ? String(currentWorkerRequest.job_status) : "";
+  const posterActiveStatus = posterActiveRequest?.job_status != null ? String(posterActiveRequest.job_status) : "";
+  const jobLockedAfterAcceptance = LOCKED_JOB_STATUSES.has(posterActiveStatus);
+  const jobAccepted = posterActiveStatus === "2";
+  const shouldShowPayment = Boolean(priceLabel) && isPoster && posterActiveStatus === "6";
+  const activeWorker = useMemo(() => {
+    const requestedWorker = getApplicationWorker(posterActiveRequest);
+    if (requestedWorker) return requestedWorker;
+    const worker = job?.workerId;
+    if (!worker || typeof worker === "string") return null;
+    return worker;
+  }, [job?.workerId, posterActiveRequest]);
+  const activeWorkerId = activeWorker?._id ?? (typeof job?.workerId === "string" ? job.workerId : "");
+  const chatReadyStatuses = new Set(["2", "3", "6", "7", "8", "9"]);
+  const ratedByMe = Number(job?.ratedbyme ?? 0) === 1;
+  const reviewTargetId = isPoster ? activeWorkerId : getJobOwnerId(job);
+  const reviewTargetName = isPoster
+    ? [activeWorker?.firstname, activeWorker?.lastname].filter(Boolean).join(" ").trim() || "worker"
+    : resolvedPosterName || "poster";
+  const canChatAsWorker = chatReadyStatuses.has(currentWorkerStatus);
+  const canChatAsPoster = chatReadyStatuses.has(posterActiveStatus) && Boolean(activeWorkerId);
+  const canReview = Boolean(me?._id && reviewTargetId && (currentWorkerStatus === "7" || posterActiveStatus === "7") && !ratedByMe);
 
-  async function handlePayNow() {
-    if (!job?._id && !id) {
-      setPaymentError("Job id is missing.");
-      return;
-    }
-    if (!numericPrice || numericPrice <= 0) {
-      setPaymentError("This job does not have a payable amount yet.");
-      return;
-    }
-    if (!hasSavedCard) {
-      setPaymentError("Add a saved card before making a payment.");
-      return;
-    }
-
-    setPaymentBusy(true);
-    setPaymentError(null);
-    setPaymentMessage(null);
-    try {
-      const transactionId =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? `web-${crypto.randomUUID()}`
-          : `web-${Date.now()}-${id}`;
-
-      await recordJobPayment({
-        transactionId,
-        jobId: job?._id || id,
-        transaction_status: 1,
-        amount: numericPrice,
-        cancellation_charges: 0,
-      });
-      setPaymentMessage("Payment recorded successfully.");
-    } catch (nextError) {
-      setPaymentError(nextError instanceof Error ? nextError.message : "Payment failed.");
-    } finally {
-      setPaymentBusy(false);
-    }
+  function openChat(userId: string, userName?: string | null) {
+    if (!userId) return;
+    const params = new URLSearchParams({ userId });
+    if (userName?.trim()) params.set("name", userName.trim());
+    router.push(`/messages?${params.toString()}`);
   }
 
   async function handleApplicationStatus(application: JobApplication, status: 2 | 4) {
@@ -872,7 +1065,7 @@ export default function JobDetailsClient({ id }: { id: string }) {
         job_status: status,
       });
       setApplicationMessage(status === 2 ? "Application accepted." : "Application declined.");
-      await loadApplications();
+      await Promise.all([loadApplications(), refreshJobDetails()]);
     } catch (nextError) {
       if (nextError instanceof ApiError && (nextError.status === 401 || nextError.status === 403)) {
         router.replace("/auth/login");
@@ -881,6 +1074,158 @@ export default function JobDetailsClient({ id }: { id: string }) {
       setApplicationsError(nextError instanceof Error ? nextError.message : "Failed to update application.");
     } finally {
       setApplicationAction(null);
+    }
+  }
+
+  async function handleLifecycleStatus(nextStatus: 3 | 6 | 7 | 8 | 9) {
+    const request = isPoster ? posterActiveRequest : currentWorkerRequest;
+    const requestId = request?._id ?? "";
+    const jobId = job?._id || id;
+    if (!requestId || !jobId) return;
+
+    setWorkflowBusy(`status-${nextStatus}`);
+    setWorkflowError(null);
+    setWorkflowMessage(null);
+    try {
+      await updateJobLifecycleStatus({
+        jobRequested_id: requestId,
+        job_id: jobId,
+        job_status: nextStatus,
+      });
+      setWorkflowMessage(STATUS_LABELS[String(nextStatus)] ? `${STATUS_LABELS[String(nextStatus)]} updated.` : "Job status updated.");
+      await Promise.all([loadApplications(), refreshJobDetails()]);
+    } catch (nextError) {
+      if (nextError instanceof ApiError && (nextError.status === 401 || nextError.status === 403)) {
+        router.replace(`/auth/login?next=${encodeURIComponent(`/jobs/${id}`)}`);
+        return;
+      }
+      setWorkflowError(nextError instanceof Error ? nextError.message : "Failed to update job status.");
+    } finally {
+      setWorkflowBusy(null);
+    }
+  }
+
+  async function handleUploadImages(type: "1" | "2") {
+    const files = type === "1" ? beforeImages : afterImages;
+    if (!files.length) {
+      setWorkflowError(type === "1" ? "Choose at least one before-work image." : "Choose at least one after-work image.");
+      return;
+    }
+
+    setWorkflowBusy(`upload-${type}`);
+    setWorkflowError(null);
+    setWorkflowMessage(null);
+    try {
+      await uploadWorkerJobImages({
+        jobId: job?._id || id,
+        type,
+        images: files,
+      });
+      if (type === "1") setBeforeImages([]);
+      if (type === "2") setAfterImages([]);
+      setWorkflowMessage(type === "1" ? "Before-work images uploaded." : "After-work images uploaded.");
+      await refreshJobDetails();
+    } catch (nextError) {
+      setWorkflowError(nextError instanceof Error ? nextError.message : "Failed to upload job images.");
+    } finally {
+      setWorkflowBusy(null);
+    }
+  }
+
+  async function handleWorkerCompleteWork() {
+    const requestId = currentWorkerRequest?._id ?? "";
+    const jobId = job?._id || id;
+    if (!requestId || !jobId) return;
+
+    setWorkflowError(null);
+    setWorkflowMessage(null);
+
+    try {
+      if (afterWorkImages.length === 0 && afterImages.length === 0) {
+        setWorkflowError("Upload after-work images before marking this job complete.");
+        return;
+      }
+
+      if (afterImages.length > 0) {
+        setWorkflowBusy("upload-complete");
+        await uploadWorkerJobImages({
+          jobId,
+          type: "2",
+          images: afterImages,
+        });
+        setAfterImages([]);
+      }
+
+      setWorkflowBusy("status-6");
+      await updateJobLifecycleStatus({
+        jobRequested_id: requestId,
+        job_id: jobId,
+        job_status: 6,
+      });
+      setWorkflowMessage("Job marked complete and after-work photos uploaded.");
+      await Promise.all([loadApplications(), refreshJobDetails()]);
+    } catch (nextError) {
+      setWorkflowError(nextError instanceof Error ? nextError.message : "Failed to complete this job.");
+    } finally {
+      setWorkflowBusy(null);
+    }
+  }
+
+  async function handleSubmitReview() {
+    if (!reviewTargetId) {
+      setReviewError("Review recipient could not be resolved.");
+      return;
+    }
+    if (!reviewComment.trim()) {
+      setReviewError("Please add a short review comment.");
+      return;
+    }
+
+    setReviewBusy(true);
+    setReviewError(null);
+    setReviewMessage(null);
+    try {
+      await addReview({
+        reciver_userId: reviewTargetId,
+        rating: Number(reviewRating),
+        comment: reviewComment.trim(),
+        jobId: job?._id || id,
+      });
+      setReviewComment("");
+      setReviewRating("5");
+      setReviewMessage(`Review submitted for ${reviewTargetName}.`);
+      await refreshJobDetails();
+    } catch (nextError) {
+      setReviewError(nextError instanceof Error ? nextError.message : "Failed to submit review.");
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
+  async function handleDeleteJob() {
+    const jobId = job?._id || id;
+    if (!jobId || deleteBusy) return;
+    if (jobLockedAfterAcceptance) {
+      setDeleteError("This job can no longer be deleted because an offer has already been accepted.");
+      return;
+    }
+    if (typeof window !== "undefined" && !window.confirm("Delete this job? This action cannot be undone.")) {
+      return;
+    }
+
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await deleteManagedJob(jobId);
+      router.push("/jobs/manage?deleted=1");
+    } catch (nextError) {
+      if (nextError instanceof ApiError && (nextError.status === 401 || nextError.status === 403)) {
+        router.replace(`/auth/login?next=${encodeURIComponent(`/jobs/${id}`)}`);
+        return;
+      }
+      setDeleteError(nextError instanceof Error ? nextError.message : "Unable to delete this job.");
+    } finally {
+      setDeleteBusy(false);
     }
   }
 
@@ -941,8 +1286,8 @@ export default function JobDetailsClient({ id }: { id: string }) {
                   <h1 className="jdc-title">{title}</h1>
 
                   <PostedBy
-                    name={posterName}
-                    initials={posterInitials}
+                    name={resolvedPosterName}
+                    initials={resolvedPosterInitials}
                     src={posterSrc}
                     rating={posterRating}
                     reviews={posterReviews}
@@ -1000,13 +1345,29 @@ export default function JobDetailsClient({ id }: { id: string }) {
                     </>
                   )}
 
-                  <div className="jdc-job-id">Job #{id}</div>
+                  {beforeWorkImages.length > 0 && (
+                    <>
+                      <div className="jdc-gallery-label">Before work</div>
+                      <div className="jdc-image-strip">
+                        {beforeWorkImages.map((src, index) => (
+                          <img key={`${src}-${index}`} src={src} alt={`Before work ${index + 1}`} />
+                        ))}
+                      </div>
+                    </>
+                  )}
 
-                  <button className="raw-toggle" onClick={() => setRawOpen((v) => !v)}>
-                    <span className={`raw-icon ${rawOpen ? "open" : ""}`}>▶</span>
-                    Raw payload
-                  </button>
-                  {rawOpen && <pre className="raw-pre">{JSON.stringify(job, null, 2)}</pre>}
+                  {afterWorkImages.length > 0 && (
+                    <>
+                      <div className="jdc-gallery-label">After work</div>
+                      <div className="jdc-image-strip">
+                        {afterWorkImages.map((src, index) => (
+                          <img key={`${src}-${index}`} src={src} alt={`After work ${index + 1}`} />
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  <div className="jdc-job-id">Job #{id}</div>
                 </div>
               </div>
 
@@ -1073,14 +1434,14 @@ export default function JobDetailsClient({ id }: { id: string }) {
                 {priceLabel && (
                   <div className="jdc-price-row">
                     <span className="jdc-price">{priceLabel}</span>
-                    <span className="jdc-price-label">Offered price</span>
+                    <span className="jdc-price-label">{priceCaption}</span>
                   </div>
                 )}
-                {priceLabel && (
+                {shouldShowPayment && (
                   <div style={{ marginBottom: 14, display: "grid", gap: 10 }}>
                     {!hasSavedCard ? (
                       <div style={{ border: "1px solid rgba(255,255,255,0.10)", borderRadius: 14, background: "rgba(255,255,255,0.04)", padding: 14, fontSize: 13, color: "var(--sub)", lineHeight: 1.6 }}>
-                        Add a saved card before paying for this job.
+                        Add a saved card before confirming payment for this completed job.
                         {" "}
                         <Link href="/profile/payments" style={{ color: "#EAEAEA", fontWeight: 600 }}>
                           Open wallet & payments
@@ -1089,40 +1450,234 @@ export default function JobDetailsClient({ id }: { id: string }) {
                     ) : (
                       <div style={{ border: "1px solid rgba(255,255,255,0.10)", borderRadius: 14, background: "rgba(255,255,255,0.04)", padding: 14, display: "grid", gap: 10 }}>
                         <div style={{ fontSize: 13, color: "var(--sub)", lineHeight: 1.6 }}>
-                          Use your saved card to record payment for this job. This web flow currently records the backend payment directly.
+                          The worker has marked this job completed. Open the completed-work page to inspect the uploaded proof, message the worker if needed, and then confirm payment with Stripe.
                         </div>
-                        <button
-                          type="button"
+                        <Link
+                          href={`/jobs/${encodeURIComponent(job?._id || id)}/completion/${encodeURIComponent(posterActiveRequest?._id || "")}`}
                           className="jdc-apply-btn"
-                          disabled={paymentBusy}
-                          onClick={handlePayNow}
+                          style={{ textDecoration: "none" }}
                         >
-                          {paymentBusy ? "Processing payment..." : `Pay now${priceLabel ? ` • ${priceLabel}` : ""}`}
-                        </button>
+                          Inspect completed work{priceLabel ? ` • ${priceLabel}` : ""}
+                        </Link>
                       </div>
                     )}
-                    {paymentError && <div style={{ color: "#fecaca", fontSize: 13 }}>{paymentError}</div>}
-                    {paymentMessage && <div style={{ color: "#a7f3d0", fontSize: 13 }}>{paymentMessage}</div>}
                   </div>
                 )}
 
+                {workflowError ? <div style={{ color: "#fecaca", fontSize: 13 }}>{workflowError}</div> : null}
+                {workflowMessage ? <div style={{ color: "#a7f3d0", fontSize: 13 }}>{workflowMessage}</div> : null}
+
                 {canApply ? (
-                  <>
-                    <button type="button" className="jdc-apply-btn" onClick={() => router.push(`/jobs/${id}/apply`)}>
-                      Apply for this job
-                    </button>
-                    <p className="jdc-apply-note">Send your offer amount and message on the next screen.</p>
-                  </>
+                  currentWorkerRequest ? (
+                    <div className="jdc-subcard">
+                      <div className="jdc-status-note">
+                        Your application status: <strong>{STATUS_LABELS[currentWorkerStatus] || `Status ${currentWorkerStatus || "pending"}`}</strong>
+                      </div>
+                      {currentWorkerStatus === "1" ? (
+                        <p className="jdc-apply-note">The employer still needs to accept your offer before the work can begin.</p>
+                      ) : null}
+                      {["2", "8", "9", "3", "6", "7"].includes(currentWorkerStatus) ? (
+                        <>
+                          <div className="jdc-inline-actions">
+                            {currentWorkerStatus === "2" ? (
+                              <button
+                                type="button"
+                                className="jdc-inline-btn primary"
+                                disabled={workflowBusy === "status-8"}
+                                onClick={() => handleLifecycleStatus(8)}
+                              >
+                                {workflowBusy === "status-8" ? "Saving…" : "Start tracking"}
+                              </button>
+                            ) : null}
+                            {["2", "8"].includes(currentWorkerStatus) ? (
+                              <button
+                                type="button"
+                                className="jdc-inline-btn warn"
+                                disabled={workflowBusy === "status-9"}
+                                onClick={() => handleLifecycleStatus(9)}
+                              >
+                                {workflowBusy === "status-9" ? "Saving…" : "Mark reached"}
+                              </button>
+                            ) : null}
+                            {["2", "8", "9"].includes(currentWorkerStatus) ? (
+                              <button
+                                type="button"
+                                className="jdc-inline-btn primary"
+                                disabled={workflowBusy === "status-3"}
+                                onClick={() => handleLifecycleStatus(3)}
+                              >
+                                {workflowBusy === "status-3" ? "Saving…" : "Start job"}
+                              </button>
+                            ) : null}
+                            {["3", "8", "9"].includes(currentWorkerStatus) ? (
+                              <button
+                                type="button"
+                                className="jdc-inline-btn success"
+                                disabled={workflowBusy === "status-6" || workflowBusy === "upload-complete"}
+                                onClick={handleWorkerCompleteWork}
+                              >
+                                {workflowBusy === "status-6" || workflowBusy === "upload-complete" ? "Saving…" : "Complete work"}
+                              </button>
+                            ) : null}
+                            {canChatAsWorker ? (
+                              <button
+                                type="button"
+                                className="jdc-inline-btn"
+                                onClick={() => openChat(getJobOwnerId(job), resolvedPosterName)}
+                              >
+                                Chat
+                              </button>
+                            ) : null}
+                          </div>
+
+                          <div className="jdc-upload-grid">
+                            <label className="jdc-upload-field">
+                              <span className="jdc-upload-label">Upload before-work images</span>
+                              <input
+                                className="jdc-upload-input"
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                onChange={(event) => setBeforeImages(Array.from(event.target.files ?? []))}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              className="jdc-inline-btn"
+                              disabled={workflowBusy === "upload-1"}
+                              onClick={() => handleUploadImages("1")}
+                            >
+                              {workflowBusy === "upload-1" ? "Uploading…" : "Upload before images"}
+                            </button>
+
+                            <label className="jdc-upload-field">
+                              <span className="jdc-upload-label">Upload after-work images</span>
+                              <input
+                                className="jdc-upload-input"
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                onChange={(event) => setAfterImages(Array.from(event.target.files ?? []))}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              className="jdc-inline-btn"
+                              disabled={workflowBusy === "upload-2"}
+                              onClick={() => handleUploadImages("2")}
+                            >
+                              {workflowBusy === "upload-2" ? "Uploading…" : "Upload after images"}
+                            </button>
+                          </div>
+                        </>
+                      ) : null}
+                      {currentWorkerStatus === "6" ? (
+                        <p className="jdc-apply-note">You have marked this job as completed. The employer still needs to confirm the finish.</p>
+                      ) : null}
+                      {currentWorkerStatus === "7" ? (
+                        <p className="jdc-apply-note">This job has been fully completed and confirmed.</p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <>
+                      <button type="button" className="jdc-apply-btn" onClick={() => router.push(`/jobs/${id}/apply`)}>
+                        Apply for this job
+                      </button>
+                      <p className="jdc-apply-note">Send your offer amount and message on the next screen.</p>
+                    </>
+                  )
                 ) : !me?._id ? (
                   <>
                     <button type="button" className="jdc-apply-btn" onClick={() => router.push(`/auth/login?next=${encodeURIComponent(`/jobs/${id}/apply`)}`)}>
-                      Sign in to apply
+                      Apply for this job
                     </button>
-                    <p className="jdc-apply-note">Workers need to be signed in before sending an offer.</p>
+                    <p className="jdc-apply-note">You’ll be asked to sign in first, then we’ll take you to the offer screen.</p>
                   </>
                 ) : isPoster ? (
                   <>
-                    <div className="jdc-apply-note" style={{ marginBottom: 14 }}>Incoming applications for this job</div>
+                    <div style={{ display: "grid", gap: 10 }}>
+                      {!jobLockedAfterAcceptance ? (
+                        <>
+                          <button
+                            type="button"
+                            className="jdc-apply-btn"
+                            onClick={() => router.push(`/jobs/manage?jobId=${encodeURIComponent(job?._id || id)}`)}
+                          >
+                            Edit this job
+                          </button>
+                          <button
+                            type="button"
+                            className="jdc-apply-btn"
+                            style={{ background: "rgba(248,113,113,0.18)", color: "#fecaca" }}
+                            onClick={handleDeleteJob}
+                            disabled={deleteBusy}
+                          >
+                            {deleteBusy ? "Deleting…" : "Delete this job"}
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                    <p className="jdc-apply-note">
+                      {jobLockedAfterAcceptance
+                        ? "This job is locked because an offer has already been accepted. You can still manage the active worker flow below."
+                        : "Update or remove your listing from here. Applying is disabled on your own job."}
+                    </p>
+                    {deleteError ? <div style={{ color: "#fecaca", fontSize: 13, marginTop: 8 }}>{deleteError}</div> : null}
+                    {posterActiveRequest ? (
+                      <div className="jdc-subcard">
+                        <div className="jdc-status-note">
+                          Active worker status: <strong>{STATUS_LABELS[posterActiveStatus] || `Status ${posterActiveStatus}`}</strong>
+                        </div>
+                        {jobAccepted ? (
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 8,
+                              width: "fit-content",
+                              minHeight: 36,
+                              padding: "0 14px",
+                              borderRadius: 999,
+                              border: "1px solid rgba(74,222,128,0.34)",
+                              background: "rgba(74,222,128,0.14)",
+                              color: "#bbf7d0",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              letterSpacing: "0.08em",
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            <span aria-hidden="true">✓</span>
+                            <span>Job has been accepted</span>
+                          </div>
+                        ) : null}
+                        <div className="jdc-inline-actions">
+                          {canChatAsPoster ? (
+                            <button
+                              type="button"
+                              className="jdc-inline-btn"
+                              onClick={() => openChat(activeWorkerId, [activeWorker?.firstname, activeWorker?.lastname].filter(Boolean).join(" ").trim() || "Worker")}
+                            >
+                              Chat
+                            </button>
+                          ) : null}
+                          {posterActiveStatus === "6" ? (
+                            <button
+                              type="button"
+                              className="jdc-inline-btn success"
+                              disabled={workflowBusy === "status-7"}
+                              onClick={() => handleLifecycleStatus(7)}
+                            >
+                              {workflowBusy === "status-7" ? "Saving…" : "Confirm finished"}
+                            </button>
+                          ) : null}
+                        </div>
+                        {posterActiveStatus === "7" ? (
+                          <p className="jdc-apply-note">This job has been confirmed as finished.</p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <div className="jdc-apply-note" style={{ marginBottom: 14, marginTop: 8 }}>Incoming applications for this job</div>
                     {applicationMessage ? <div style={{ color: "#a7f3d0", fontSize: 13, marginBottom: 12 }}>{applicationMessage}</div> : null}
                     {applicationsError ? <div style={{ color: "#fecaca", fontSize: 13, marginBottom: 12 }}>{applicationsError}</div> : null}
                     {applicationsLoading ? (
@@ -1139,7 +1694,6 @@ export default function JobDetailsClient({ id }: { id: string }) {
                           const profileHref = worker?._id
                             ? buildPublicProfileHref({
                                 userId: worker._id,
-                                kind: "worker",
                                 jobId: application._id ?? "",
                               })
                             : null;
@@ -1216,24 +1770,59 @@ export default function JobDetailsClient({ id }: { id: string }) {
                                     View profile
                                   </Link>
                                 ) : null}
-                                <button
-                                  type="button"
-                                  className="jdc-apply-btn"
-                                  style={{ width: "auto", padding: "11px 14px", fontSize: 11 }}
-                                  disabled={currentStatus === "2" || applicationAction === `2-${application._id}`}
-                                  onClick={() => handleApplicationStatus(application, 2)}
-                                >
-                                  {currentStatus === "2" ? "Accepted" : "Accept"}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="jdc-apply-btn"
-                                  style={{ width: "auto", padding: "11px 14px", fontSize: 11, background: "rgba(248,113,113,0.18)", color: "#fecaca" }}
-                                  disabled={currentStatus === "4" || applicationAction === `4-${application._id}`}
-                                  onClick={() => handleApplicationStatus(application, 4)}
-                                >
-                                  {currentStatus === "4" ? "Declined" : "Decline"}
-                                </button>
+                                {currentStatus === "2" ? (
+                                  <div
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 8,
+                                      minHeight: 34,
+                                      padding: "0 12px",
+                                      borderRadius: 999,
+                                      border: "1px solid rgba(74,222,128,0.30)",
+                                      background: "rgba(74,222,128,0.14)",
+                                      color: "#bbf7d0",
+                                      fontSize: 11,
+                                      fontWeight: 700,
+                                      letterSpacing: "0.10em",
+                                      textTransform: "uppercase",
+                                    }}
+                                  >
+                                    <span aria-hidden="true">✓</span>
+                                    <span>Job accepted</span>
+                                  </div>
+                                ) : null}
+                                {!jobLockedAfterAcceptance ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="jdc-apply-btn"
+                                      style={{ width: "auto", padding: "11px 14px", fontSize: 11 }}
+                                      disabled={applicationAction === `2-${application._id}`}
+                                      onClick={() => handleApplicationStatus(application, 2)}
+                                    >
+                                      {applicationAction === `2-${application._id}` ? "Accepting…" : "Accept"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="jdc-apply-btn"
+                                      style={{ width: "auto", padding: "11px 14px", fontSize: 11, background: "rgba(248,113,113,0.18)", color: "#fecaca" }}
+                                      disabled={applicationAction === `4-${application._id}`}
+                                      onClick={() => handleApplicationStatus(application, 4)}
+                                    >
+                                      {applicationAction === `4-${application._id}` ? "Denying…" : "Decline"}
+                                    </button>
+                                  </>
+                                ) : null}
+                                {chatReadyStatuses.has(currentStatus) && worker?._id ? (
+                                  <button
+                                    type="button"
+                                    className="jdc-inline-btn"
+                                    onClick={() => openChat(worker._id ?? "", workerName)}
+                                  >
+                                    Chat
+                                  </button>
+                                ) : null}
                               </div>
                             </div>
                           );
@@ -1242,8 +1831,55 @@ export default function JobDetailsClient({ id }: { id: string }) {
                     )}
                   </>
                 ) : (
-                  <p className="jdc-apply-note">This account can view the job details, but applying is reserved for worker accounts.</p>
+                  <p className="jdc-apply-note">Job posters can view this job here, but cannot apply to their own listing.</p>
                 )}
+                {(canReview || ratedByMe || reviewMessage) ? (
+                  <div className="jdc-subcard" style={{ marginTop: 14 }}>
+                    <div className="jdc-status-note">
+                      {ratedByMe ? "You have already reviewed this completed job." : `Leave a review for ${reviewTargetName}.`}
+                    </div>
+                    {reviewError ? <div style={{ color: "#fecaca", fontSize: 13 }}>{reviewError}</div> : null}
+                    {reviewMessage ? <div style={{ color: "#a7f3d0", fontSize: 13 }}>{reviewMessage}</div> : null}
+                    {canReview ? (
+                      <div style={{ display: "grid", gap: 10 }}>
+                        <label className="jdc-upload-field">
+                          <span className="jdc-upload-label">Rating</span>
+                          <select
+                            className="jdc-upload-input"
+                            value={reviewRating}
+                            onChange={(event) => setReviewRating(event.target.value)}
+                          >
+                            <option value="5">5 - Excellent</option>
+                            <option value="4">4 - Good</option>
+                            <option value="3">3 - Okay</option>
+                            <option value="2">2 - Poor</option>
+                            <option value="1">1 - Very poor</option>
+                          </select>
+                        </label>
+                        <label className="jdc-upload-field">
+                          <span className="jdc-upload-label">Comment</span>
+                          <textarea
+                            className="jdc-upload-input"
+                            rows={4}
+                            value={reviewComment}
+                            onChange={(event) => setReviewComment(event.target.value)}
+                            placeholder={`Share a short note about working with this ${isPoster ? "worker" : "poster"}.`}
+                          />
+                        </label>
+                        <div className="jdc-inline-actions">
+                          <button
+                            type="button"
+                            className="jdc-inline-btn primary"
+                            disabled={reviewBusy}
+                            onClick={handleSubmitReview}
+                          >
+                            {reviewBusy ? "Submitting…" : "Submit review"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </>
           )}

@@ -23,8 +23,12 @@ function getBackendBaseUrl() {
   return value;
 }
 
-function requestJobDetails(baseUrl: string, payload: { jobId: string }) {
+function requestJobDetails(baseUrl: string, payload: { jobId: string; userId?: string }) {
   const url = new URL("/api/job_details", baseUrl);
+  url.searchParams.set("jobId", payload.jobId);
+  if (payload.userId) {
+    url.searchParams.set("userId", payload.userId);
+  }
   const body = JSON.stringify(payload);
   const transport = url.protocol === "https:" ? httpsRequest : httpRequest;
 
@@ -65,7 +69,9 @@ function requestJobDetails(baseUrl: string, payload: { jobId: string }) {
 export async function GET(_: Request, context: RouteContext) {
   try {
     const { id } = await context.params;
-    const response = await requestJobDetails(getBackendBaseUrl(), { jobId: id });
+    const requestUrl = new URL(_.url);
+    const userId = requestUrl.searchParams.get("userId") || undefined;
+    const response = await requestJobDetails(getBackendBaseUrl(), { jobId: id, userId });
 
     let parsed: BackendEnvelope | { raw: string };
     try {

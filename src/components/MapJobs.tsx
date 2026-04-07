@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useEffect, useCallback } from "react";
-import { APIProvider, Map, Marker } from "@vis.gl/react-google-maps";
+import { APIProvider, Map, Marker, useApiIsLoaded } from "@vis.gl/react-google-maps";
 import { Job } from "@/lib/jobs";
 
 const styles = `
@@ -96,6 +96,32 @@ const styles = `
 
   .mj-map-wrap { position: absolute; inset: 0; }
   .mj-map-wrap > div { height: 100% !important; }
+  .mj-loading {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background:
+      radial-gradient(1200px 600px at 20% 10%, rgba(255,255,255,0.14), rgba(255,255,255,0) 60%),
+      linear-gradient(135deg, rgba(28,143,178,0.18), rgba(32,151,189,0.28));
+    color: rgba(15,23,42,0.72);
+    z-index: 1;
+  }
+  .mj-loading-card {
+    background: rgba(248,251,252,0.82);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.55);
+    border-radius: 16px;
+    padding: 18px 20px;
+    box-shadow:
+      0 18px 50px rgba(0,0,0,0.10),
+      0 8px 18px rgba(0,0,0,0.06);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+  }
 
   /* Optional: subtle map vignette so markers pop */
   .mj-vignette {
@@ -196,36 +222,12 @@ export function MapJobs({
       <style>{styles}</style>
       <div className="mj-root">
         <APIProvider apiKey={key}>
-          <div className="mj-map-wrap">
-            <Map
-              defaultCenter={center}
-              defaultZoom={11}
-              disableDefaultUI={false}
-              gestureHandling="greedy"
-            >
-              {markerJobs.map((j) => (
-                <Marker
-                  key={j.id}
-                  position={{ lat: j.lat, lng: j.lng }}
-                  onClick={() => onSelect(j)}
-                  icon={{
-                    url: resolveIconUrl(j.jobTypeIconPath),
-                    scaledSize:
-                      typeof window !== "undefined" && window.google?.maps
-                        ? new window.google.maps.Size(50, 50)
-                        : undefined,
-                    anchor:
-                      typeof window !== "undefined" && window.google?.maps
-                        ? new window.google.maps.Point(25, 25)
-                        : undefined,
-                  }}
-                />
-              ))}
-            </Map>
-
-            {/* Optional vignette overlay */}
-            <div className="mj-vignette" />
-          </div>
+          <MapJobsCanvas
+            center={center}
+            markerJobs={markerJobs}
+            onSelect={onSelect}
+            resolveIconUrl={resolveIconUrl}
+          />
 
           {markerJobs.length > 0 && (
             <div className="mj-badge">
@@ -236,5 +238,58 @@ export function MapJobs({
         </APIProvider>
       </div>
     </>
+  );
+}
+
+function MapJobsCanvas({
+  center,
+  markerJobs,
+  onSelect,
+  resolveIconUrl,
+}: {
+  center: { lat: number; lng: number };
+  markerJobs: Job[];
+  onSelect: (job: Job) => void;
+  resolveIconUrl: (iconPath?: string) => string;
+}) {
+  const apiIsLoaded = useApiIsLoaded();
+
+  const markerIcon = useMemo(() => {
+    if (!apiIsLoaded || typeof window === "undefined" || !window.google?.maps) return null;
+    return {
+      scaledSize: new window.google.maps.Size(50, 50),
+      anchor: new window.google.maps.Point(25, 25),
+    };
+  }, [apiIsLoaded]);
+
+  return (
+    <div className="mj-map-wrap">
+      {!apiIsLoaded ? (
+        <div className="mj-loading">
+          <div className="mj-loading-card">Loading map…</div>
+        </div>
+      ) : null}
+
+      <Map
+        defaultCenter={center}
+        defaultZoom={11}
+        disableDefaultUI={false}
+        gestureHandling="greedy"
+      >
+        {markerJobs.map((j) => (
+          <Marker
+            key={j.id}
+            position={{ lat: j.lat, lng: j.lng }}
+            onClick={() => onSelect(j)}
+            icon={{
+              url: resolveIconUrl(j.jobTypeIconPath),
+              ...(markerIcon ?? {}),
+            }}
+          />
+        ))}
+      </Map>
+
+      <div className="mj-vignette" />
+    </div>
   );
 }

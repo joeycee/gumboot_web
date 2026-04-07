@@ -31,6 +31,18 @@ function readAuthToken(): string | null {
   );
 }
 
+export function getApiBaseUrl() {
+  return API_BASE;
+}
+
+export function getApiOrigin() {
+  return API_BASE.replace(/\/api\/?$/, "");
+}
+
+export function getStoredAuthToken() {
+  return readAuthToken();
+}
+
 export function setAuthToken(token: string) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(AUTH_TOKEN_KEY, token);
@@ -68,6 +80,48 @@ export async function api<T>(
       ...(opts.headers ?? {}),
     },
     body: opts.body ? JSON.stringify(opts.body) : undefined,
+    cache: "no-store",
+  });
+
+  const text = await res.text();
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = { raw: text };
+  }
+
+  const envelope = data as { success?: boolean; message?: string };
+  if (!res.ok || envelope?.success === false) {
+    throw new ApiError(envelope?.message || `HTTP ${res.status}`, res.status);
+  }
+
+  return data as T;
+}
+
+export async function apiForm<T>(
+  path: string,
+  body: FormData,
+  opts: {
+    method?: Exclude<Method, "GET">;
+    headers?: Record<string, string>;
+    auth?: boolean;
+    includeAppKeys?: boolean;
+  } = {}
+): Promise<T> {
+  const token = readAuthToken();
+  const shouldAttachAuth = opts.auth !== false;
+  const hasAuthHeader = Boolean(opts.headers?.Authorization || opts.headers?.authorization);
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: opts.method ?? "POST",
+    headers: {
+      ...(opts.includeAppKeys && APP_SECRET_KEY ? { secret_key: APP_SECRET_KEY } : {}),
+      ...(opts.includeAppKeys && APP_PUBLISH_KEY ? { publish_key: APP_PUBLISH_KEY } : {}),
+      ...(shouldAttachAuth && token && !hasAuthHeader ? { Authorization: `Bearer ${token}` } : {}),
+      ...(opts.headers ?? {}),
+    },
+    body,
     cache: "no-store",
   });
 

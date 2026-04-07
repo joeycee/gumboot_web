@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMe } from "@/lib/useMe";
 import { getChatSocket, type SocketLike } from "@/lib/socketClient";
@@ -906,6 +907,7 @@ function getInitials(name?: string): string {
 }
 
 export default function MessagesPage() {
+  const searchParams = useSearchParams();
   const { user, loading } = useMe();
   const socketRef = useRef<SocketLike | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -921,6 +923,8 @@ export default function MessagesPage() {
 
   const me = useMemo(() => readUser(user), [user]);
   const loggedInUserId = me._id ?? "";
+  const requestedOtherUserId = searchParams.get("userId")?.trim() ?? "";
+  const requestedOtherUserName = searchParams.get("name")?.trim() ?? "Conversation";
 
   const [socketReady, setSocketReady] = useState(false);
   const [socketError, setSocketError] = useState<string | null>(null);
@@ -938,8 +942,19 @@ export default function MessagesPage() {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const selectedConversation = useMemo(
-    () => conversations.find((item) => item.otherUserId === selectedOtherUserId) ?? null,
-    [conversations, selectedOtherUserId]
+    () =>
+      conversations.find((item) => item.otherUserId === selectedOtherUserId) ??
+      (selectedOtherUserId
+        ? {
+            id: selectedOtherUserId,
+            otherUserId: selectedOtherUserId,
+            otherUserName: requestedOtherUserName,
+            unreadCount: 0,
+            latestMessage: "Start the conversation",
+            raw: {},
+          }
+        : null),
+    [conversations, requestedOtherUserName, selectedOtherUserId]
   );
 
   const threadImages = useMemo(
@@ -998,10 +1013,6 @@ export default function MessagesPage() {
         scrollFrameRef.current = null;
       });
     });
-  }, []);
-
-  const queueScrollToBottom = useCallback((behavior: ScrollBehavior) => {
-    pendingScrollRef.current = behavior;
   }, []);
 
   const refreshConversationList = useCallback(() => {
@@ -1143,12 +1154,16 @@ export default function MessagesPage() {
   }, [loggedInUserId, refreshConversationList, scrollToBottom]);
 
   useEffect(() => {
+    if (requestedOtherUserId) {
+      setSelectedOtherUserId(requestedOtherUserId);
+      return;
+    }
     if (!conversations.length) { setSelectedOtherUserId(""); return; }
     setSelectedOtherUserId((current) => {
       if (current && conversations.some((item) => item.otherUserId === current)) return current;
       return conversations[0]?.otherUserId ?? "";
     });
-  }, [conversations]);
+  }, [conversations, requestedOtherUserId]);
 
   useEffect(() => {
     if (!loggedInUserId || !selectedOtherUserId || !socketRef.current) {
@@ -1646,7 +1661,7 @@ export default function MessagesPage() {
               <div className="msg-lightbox-meta">
                 <div className="msg-lightbox-meta-card">
                   <span className="msg-lightbox-count">
-                    {lightboxIndex + 1} / {threadImages.length}
+                    {(lightboxIndex ?? 0) + 1} / {threadImages.length}
                   </span>
                   <span className="msg-lightbox-caption">{activeLightboxImage.label}</span>
                 </div>

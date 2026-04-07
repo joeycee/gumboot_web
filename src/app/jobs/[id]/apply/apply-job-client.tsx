@@ -146,11 +146,6 @@ const styles = `
   }
 `;
 
-function isWorkerRole(role: unknown) {
-  const value = String(role ?? "").trim().toLowerCase();
-  return value === "2" || value === "worker";
-}
-
 export default function ApplyJobClient({ jobId }: { jobId: string }) {
   const router = useRouter();
   const { user, loading: meLoading } = useMe();
@@ -168,10 +163,7 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
       router.replace(`/auth/login?next=${encodeURIComponent(`/jobs/${jobId}/apply`)}`);
       return;
     }
-    if (!isWorkerRole(me.role)) {
-      router.replace(`/jobs/${jobId}`);
-    }
-  }, [jobId, me?._id, me?.role, meLoading, router]);
+  }, [jobId, me?._id, meLoading, router]);
 
   const canSubmit = useMemo(
     () => offerAmount.trim().length > 0 && message.trim().length > 0 && !submitting,

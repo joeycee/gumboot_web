@@ -10,6 +10,14 @@ import { Job, normalizeJobs } from "@/lib/jobs";
 import { useMe } from "@/lib/useMe";
 
 type ViewMode = "map" | "list";
+type MobileDeviceKind = "ios" | "android" | "other";
+
+const MOBILE_APP_PROMPT_STORAGE_KEY = "gumboot_mobile_app_prompt_dismissed";
+const MOBILE_DEVICE_STORAGE_KEY = "gumboot_mobile_device_info";
+const MOBILE_APP_PROMPT_ENABLED = process.env.NEXT_PUBLIC_ENABLE_MOBILE_APP_PROMPT === "true";
+const MOBILE_APP_URL = process.env.NEXT_PUBLIC_GUMBOOT_APP_URL ?? "";
+const IOS_APP_URL = process.env.NEXT_PUBLIC_GUMBOOT_IOS_APP_URL ?? MOBILE_APP_URL;
+const ANDROID_APP_URL = process.env.NEXT_PUBLIC_GUMBOOT_ANDROID_APP_URL ?? MOBILE_APP_URL;
 
 const styles = `
   .hc-root * { box-sizing: border-box; }
@@ -44,6 +52,129 @@ const styles = `
     font-size: 12px;
   }
   .hc-footer strong { color: rgba(229,229,229,0.78); font-weight: 700; }
+  .hc-mobile-prompt {
+    position: fixed;
+    left: 14px;
+    right: 14px;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    z-index: 45;
+    border: 1px solid rgba(229,229,229,0.12);
+    border-radius: 20px;
+    background:
+      radial-gradient(circle at top right, rgba(38,166,154,0.20), rgba(0,0,0,0) 52%),
+      rgba(42,52,57,0.96);
+    box-shadow: 0 18px 50px rgba(0,0,0,0.35);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    overflow: hidden;
+  }
+  .hc-mobile-prompt-inner {
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+  }
+  .hc-mobile-prompt-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .hc-mobile-prompt-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    border: 1px solid rgba(229,229,229,0.12);
+    background: rgba(229,229,229,0.06);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: #E5E5E5;
+  }
+  .hc-mobile-prompt-copy {
+    min-width: 0;
+    flex: 1;
+  }
+  .hc-mobile-prompt-eyebrow {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(229,229,229,0.38);
+    margin: 0 0 6px;
+  }
+  .hc-mobile-prompt-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: #E5E5E5;
+  }
+  .hc-mobile-prompt-sub {
+    margin: 6px 0 0;
+    font-size: 12px;
+    line-height: 1.55;
+    color: rgba(229,229,229,0.60);
+  }
+  .hc-mobile-prompt-close {
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(229,229,229,0.10);
+    border-radius: 12px;
+    background: rgba(229,229,229,0.04);
+    color: rgba(229,229,229,0.76);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .hc-mobile-prompt-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .hc-mobile-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(229,229,229,0.10);
+    background: rgba(229,229,229,0.05);
+    color: rgba(229,229,229,0.72);
+    font-size: 11px;
+  }
+  .hc-mobile-prompt-actions {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: 1fr auto;
+  }
+  .hc-mobile-prompt-link,
+  .hc-mobile-prompt-dismiss {
+    min-height: 46px;
+    border-radius: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    border: 1px solid rgba(229,229,229,0.10);
+  }
+  .hc-mobile-prompt-link {
+    background: #26A69A;
+    border-color: transparent;
+    color: #fff;
+    box-shadow: 0 10px 22px rgba(38,166,154,0.28);
+  }
+  .hc-mobile-prompt-dismiss {
+    padding: 0 14px;
+    background: rgba(229,229,229,0.05);
+    color: rgba(229,229,229,0.82);
+    cursor: pointer;
+  }
 
   /* ── Left panel ── */
   .lp-root {
@@ -277,7 +408,92 @@ const styles = `
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
   }
+  @media (max-width: 760px) {
+    .hc-footer {
+      height: auto;
+      min-height: 44px;
+      padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .lp-header {
+      padding: 16px 16px 12px;
+    }
+    .lp-heading {
+      font-size: 18px;
+    }
+    .lp-status {
+      padding: 10px 16px;
+    }
+    .job-row,
+    .skeleton-row {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+    .job-row.selected {
+      padding-left: 14px;
+    }
+    .job-row-badge {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+    }
+    .list-view-root {
+      padding: 88px 14px 18px;
+    }
+    .list-view-heading {
+      font-size: 22px;
+      margin-bottom: 18px;
+    }
+    .list-grid {
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .list-card {
+      padding: 16px;
+      border-radius: 16px;
+    }
+    .hc-mobile-prompt-actions {
+      grid-template-columns: 1fr;
+    }
+    .hc-mobile-prompt-dismiss {
+      width: 100%;
+    }
+  }
 `;
+
+function detectMobileDevice(userAgent: string): MobileDeviceKind {
+  const ua = userAgent.toLowerCase();
+  if (/iphone|ipad|ipod/.test(ua)) return "ios";
+  if (/android/.test(ua)) return "android";
+  return "other";
+}
+
+function getMobilePromptConfig(deviceKind: MobileDeviceKind) {
+  if (deviceKind === "ios") {
+    return {
+      title: "Take Gumboot with you",
+      subtitle: "Install the iPhone app for a smoother sign-up and faster job browsing on the go.",
+      ctaLabel: "Open App Store",
+      href: IOS_APP_URL,
+    };
+  }
+  if (deviceKind === "android") {
+    return {
+      title: "Get the Gumboot app",
+      subtitle: "Use the Android app for a cleaner mobile flow, quicker job posting, and secure payments.",
+      ctaLabel: "Open Google Play",
+      href: ANDROID_APP_URL,
+    };
+  }
+  return {
+    title: "Prefer the app?",
+    subtitle: "You are browsing on a mobile device. Install Gumboot for the most polished phone experience.",
+    ctaLabel: "Open App Link",
+    href: MOBILE_APP_URL,
+  };
+}
 
 function resolveMediaUrl(path: string | undefined, apiOrigin: string): string | null {
   if (!path) return null;
@@ -330,7 +546,7 @@ function getLocationSummary(job: Job) {
 
 export default function HomeClient() {
   const router = useRouter();
-  const { user } = useMe();
+  useMe();
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
@@ -341,6 +557,9 @@ export default function HomeClient() {
   const [selectedJobType, setSelectedJobType] = useState("");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [mobileDeviceKind, setMobileDeviceKind] = useState<MobileDeviceKind>("other");
+  const [showMobileAppPrompt, setShowMobileAppPrompt] = useState(false);
 
   const apiOrigin = useMemo(
     () => (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/api\/?$/, ""),
@@ -348,12 +567,66 @@ export default function HomeClient() {
   );
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 760px)");
+    const sync = () => {
+      const isMobile = media.matches;
+      setIsMobileViewport(isMobile);
+      setMode((current) => {
+        if (isMobile && current === "map") return "list";
+        return current;
+      });
+    };
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const deviceKind = detectMobileDevice(window.navigator.userAgent);
+    setMobileDeviceKind(deviceKind);
+    try {
+      window.localStorage.setItem(
+        MOBILE_DEVICE_STORAGE_KEY,
+        JSON.stringify({
+          deviceKind,
+          userAgent: window.navigator.userAgent,
+          screenWidth: window.innerWidth,
+          screenHeight: window.innerHeight,
+          recordedAt: new Date().toISOString(),
+        })
+      );
+    } catch {
+      // Ignore local storage failures in private mode or restricted browsers.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!MOBILE_APP_PROMPT_ENABLED || !isMobileViewport) {
+      setShowMobileAppPrompt(false);
+      return;
+    }
+    if (!(IOS_APP_URL || ANDROID_APP_URL || MOBILE_APP_URL)) {
+      setShowMobileAppPrompt(false);
+      return;
+    }
+    if (typeof window === "undefined") return;
+    try {
+      const dismissed = window.localStorage.getItem(MOBILE_APP_PROMPT_STORAGE_KEY) === "1";
+      setShowMobileAppPrompt(!dismissed);
+    } catch {
+      setShowMobileAppPrompt(true);
+    }
+  }, [isMobileViewport]);
+
+  useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         setLoadingJobs(true);
         setError(null);
-        const data = await api<unknown>("/jobs_public_listing", { method: "GET", auth: false });
+        const data = await api<unknown>("/home_job_listing", { method: "GET", auth: false });
         const normalized = normalizeJobs(data);
         if (mounted) setJobs(normalized);
       } catch (e: unknown) {
@@ -368,10 +641,17 @@ export default function HomeClient() {
     };
   }, []);
 
-  const openJobDrawer = useCallback((job: Job) => {
-    setSelectedJob(job);
-    setIsDrawerOpen(true);
-  }, []);
+  const openJobDrawer = useCallback(
+    (job: Job) => {
+      if (isMobileViewport) {
+        router.push(`/jobs/${job.id}`);
+        return;
+      }
+      setSelectedJob(job);
+      setIsDrawerOpen(true);
+    },
+    [isMobileViewport, router]
+  );
 
   const closeJobDrawer = useCallback(() => {
     setIsDrawerOpen(false);
@@ -380,13 +660,9 @@ export default function HomeClient() {
 
   const onApply = useCallback(
     (jobId: string) => {
-      if (!user) {
-        router.push(`/auth/login?next=${encodeURIComponent(`/jobs/${jobId}/apply`)}`);
-        return;
-      }
-      router.push(`/jobs/${jobId}/apply`);
+      router.push(`/jobs/${jobId}`);
     },
-    [router, user]
+    [router]
   );
 
   const jobTypes = useMemo(() => {
@@ -410,6 +686,18 @@ export default function HomeClient() {
       return matchesType && matchesMin && matchesMax;
     });
   }, [jobs, selectedJobType, minPrice, maxPrice]);
+
+  const mobilePrompt = useMemo(() => getMobilePromptConfig(mobileDeviceKind), [mobileDeviceKind]);
+
+  const dismissMobilePrompt = useCallback(() => {
+    setShowMobileAppPrompt(false);
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(MOBILE_APP_PROMPT_STORAGE_KEY, "1");
+    } catch {
+      // Ignore local storage failures.
+    }
+  }, []);
 
   const leftPanel = useMemo(
     () => (
@@ -474,6 +762,60 @@ export default function HomeClient() {
       <style>{styles}</style>
 
       <div className="hc-root">
+        {showMobileAppPrompt && mobilePrompt.href ? (
+          <div className="hc-mobile-prompt" role="dialog" aria-label="Download the Gumboot app">
+            <div className="hc-mobile-prompt-inner">
+              <div className="hc-mobile-prompt-top">
+                <div className="hc-mobile-prompt-icon" aria-hidden="true">
+                  {mobileDeviceKind === "ios" ? (
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M15.2 4.1c.8-.9 1.2-2 1.1-3.1-1.1.1-2.3.7-3 1.6-.7.8-1.3 2-1.1 3 .5 0 1.1-.1 1.6-.3.5-.2 1-.6 1.4-1.2Zm2.8 8.1c0-2.1 1.7-3.1 1.8-3.2-1-1.4-2.5-1.6-3-1.6-1.3-.1-2.5.8-3.1.8-.6 0-1.6-.8-2.7-.8-1.4 0-2.7.8-3.4 2-.7 1.2-.9 3.2 0 5.1.8 1.7 1.8 3.6 3.1 3.6.6 0 .9-.2 1.4-.4.5-.2 1-.4 1.8-.4.7 0 1.2.2 1.7.4.5.2.9.4 1.5.4 1.3 0 2.2-1.8 2.9-3.5.4-1 .6-1.5.9-2.6-.1 0-2.9-1.1-2.9-3.8Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                  ) : (
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M7.2 6.3 9 9.4l3-5.1a.8.8 0 0 1 1.4 0l3 5.1 1.8-3.1a.8.8 0 0 1 1.4.8l-2.2 3.8 2.2 3.8a.8.8 0 1 1-1.4.8l-1.8-3.1-3 5.1a.8.8 0 0 1-1.4 0l-3-5.1-1.8 3.1a.8.8 0 1 1-1.4-.8L8.1 11 5.8 7.1a.8.8 0 0 1 1.4-.8Zm4 4.7-2.2 3.8h6L12.8 11l-.8-1.4-.8 1.4Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                  )}
+                </div>
+                <div className="hc-mobile-prompt-copy">
+                  <p className="hc-mobile-prompt-eyebrow">Mobile download</p>
+                  <h2 className="hc-mobile-prompt-title">{mobilePrompt.title}</h2>
+                  <p className="hc-mobile-prompt-sub">{mobilePrompt.subtitle}</p>
+                </div>
+                <button
+                  type="button"
+                  className="hc-mobile-prompt-close"
+                  aria-label="Close app download prompt"
+                  onClick={dismissMobilePrompt}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                    <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+              <div className="hc-mobile-prompt-meta">
+                <span className="hc-mobile-chip">
+                  Device: {mobileDeviceKind === "ios" ? "iPhone / iPad" : mobileDeviceKind === "android" ? "Android" : "Mobile browser"}
+                </span>
+                <span className="hc-mobile-chip">Better on phones</span>
+              </div>
+              <div className="hc-mobile-prompt-actions">
+                <a className="hc-mobile-prompt-link" href={mobilePrompt.href} target="_blank" rel="noreferrer">
+                  <span>{mobilePrompt.ctaLabel}</span>
+                </a>
+                <button type="button" className="hc-mobile-prompt-dismiss" onClick={dismissMobilePrompt}>
+                  Not now
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         <div className="hc-shell-wrap">
           <Shell
             left={leftPanel}

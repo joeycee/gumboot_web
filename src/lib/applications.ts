@@ -1,4 +1,4 @@
-import { api } from "@/lib/api";
+import { api, apiForm } from "@/lib/api";
 import type { ApiEnvelope } from "@/lib/apiTypes";
 
 export type JobApplicationWorker = {
@@ -18,6 +18,16 @@ export type JobApplication = {
   job_status?: string | number;
   createdAt?: string;
   updatedAt?: string;
+};
+
+export type JobApplicationsEnvelopeBody = {
+  jobData?: JobApplication[];
+  jobsData?: JobApplication[];
+  body?: JobApplication[];
+  ratingdata?: {
+    count?: number;
+    averageRating?: string | number;
+  };
 };
 
 function withQuery(path: string, params: Record<string, string | number | null | undefined>) {
@@ -42,7 +52,7 @@ export async function applyToJob(payload: {
 }
 
 export async function fetchJobApplications(jobId: string) {
-  return api<ApiEnvelope<JobApplication[] | { body?: JobApplication[] }>>(
+  return api<ApiEnvelope<JobApplication[] | JobApplicationsEnvelopeBody>>(
     withQuery("/applications", { jobId })
   );
 }
@@ -58,13 +68,47 @@ export async function updateJobApplicationStatus(payload: {
   });
 }
 
+export async function updateJobLifecycleStatus(payload: {
+  jobRequested_id: string;
+  job_id: string;
+  job_status: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+  message?: string;
+}) {
+  return api<ApiEnvelope<unknown>>("/updateJobStatus", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export async function uploadWorkerJobImages(payload: {
+  jobId: string;
+  type: "1" | "2";
+  images: File[];
+}) {
+  const form = new FormData();
+  form.set("jobId", payload.jobId);
+  form.set("type", payload.type);
+  for (const image of payload.images) {
+    form.append("image", image);
+  }
+  return apiForm<ApiEnvelope<unknown>>("/addImageByWorker", form);
+}
+
 export function normalizeApplicationsResponse(
-  response: ApiEnvelope<JobApplication[] | { body?: JobApplication[] }> | null | undefined
+  response: ApiEnvelope<JobApplication[] | JobApplicationsEnvelopeBody> | null | undefined
 ) {
   const body = response?.body;
   if (Array.isArray(body)) return body;
-  if (body && typeof body === "object" && Array.isArray((body as { body?: JobApplication[] }).body)) {
-    return (body as { body?: JobApplication[] }).body ?? [];
+  if (body && typeof body === "object") {
+    if (Array.isArray((body as JobApplicationsEnvelopeBody).jobData)) {
+      return (body as JobApplicationsEnvelopeBody).jobData ?? [];
+    }
+    if (Array.isArray((body as JobApplicationsEnvelopeBody).jobsData)) {
+      return (body as JobApplicationsEnvelopeBody).jobsData ?? [];
+    }
+    if (Array.isArray((body as JobApplicationsEnvelopeBody).body)) {
+      return (body as JobApplicationsEnvelopeBody).body ?? [];
+    }
   }
   return [];
 }
@@ -80,4 +124,22 @@ export function getApplicationJobId(application?: JobApplication | null) {
   if (!jobId) return "";
   if (typeof jobId === "string") return jobId;
   return jobId._id ?? "";
+}
+
+export function getApplicationWorkerId(application?: JobApplication | null) {
+  const worker = application?.workerId;
+  if (!worker) return "";
+  if (typeof worker === "string") return worker;
+  return worker._id ?? "";
+}
+
+export function findApplicationByRequestId(applications: JobApplication[], requestId: string) {
+  return applications.find((application) => String(application?._id ?? "") === String(requestId)) ?? null;
+}
+
+export function findApplicationByWorkerId(applications: JobApplication[], workerId: string) {
+  return (
+    applications.find((application) => getApplicationWorkerId(application) === workerId) ??
+    null
+  );
 }

@@ -31,6 +31,23 @@ const styles = `
   @media (max-width: 500px) {
     .footer-top { grid-template-columns: 1fr; gap: 28px; }
   }
+  @media (max-width: 640px) {
+    .footer-inner {
+      padding: 36px 16px 28px;
+    }
+    .footer-brand-desc {
+      max-width: none;
+    }
+    .footer-bottom {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+    .footer-bottom-links {
+      width: 100%;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+  }
 
   /* Brand column */
   .footer-brand {}
@@ -134,21 +151,21 @@ const LINKS = {
   platform: [
     { label: "Browse jobs", href: "/" },
     { label: "Post a job", href: "/auth/signup" },
-    { label: "How it works", href: "#" },
-    { label: "Pricing", href: "#" },
+    { label: "Manage jobs", href: "/jobs/manage" },
+    { label: "FAQ", href: "/faq" },
   ],
   account: [
     { label: "Sign up", href: "/auth/signup" },
     { label: "Sign in", href: "/auth/login" },
     { label: "Profile", href: "/profile" },
     { label: "Wallet & payments", href: "/profile/payments" },
-    { label: "Dashboard", href: "/" },
+    { label: "Settings", href: "/profile/settings" },
   ],
   company: [
-    { label: "About", href: "#" },
-    { label: "Blog", href: "#" },
-    { label: "Contact", href: "#" },
-    { label: "Support", href: "#" },
+    { label: "About", href: "/about" },
+    { label: "Support", href: "/support" },
+    { label: "Privacy", href: "/privacy" },
+    { label: "Terms", href: "/terms" },
   ],
 };
 
@@ -214,9 +231,9 @@ export function Footer() {
           <div className="footer-bottom">
             <p className="footer-copy">© {year} Gumboot Ltd. All rights reserved.</p>
             <div className="footer-bottom-links">
-              <Link href="#" className="footer-bottom-link">Privacy Policy</Link>
-              <Link href="#" className="footer-bottom-link">Terms of Service</Link>
-              <Link href="#" className="footer-bottom-link">Cookie Policy</Link>
+              <Link href="/privacy" className="footer-bottom-link">Privacy Policy</Link>
+              <Link href="/terms" className="footer-bottom-link">Terms of Service</Link>
+              <Link href="/faq" className="footer-bottom-link">FAQ</Link>
             </div>
           </div>
 

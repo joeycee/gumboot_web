@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { StripeSetupCardForm } from "@/components/StripeSetupCardForm";
 import { ApiError } from "@/lib/api";
 import {
   addBankAccount,
-  addSavedCard,
   deleteBankAccount,
   deleteSavedCard,
   editBankAccount,
@@ -23,10 +23,8 @@ import {
   getWorkerWalletHistory,
   isWorkerRole,
   maskBankAccount,
-  maskCardNumber,
   normalizeProfile,
   requestWithdraw,
-  setDefaultBank,
   type BankAccount,
   type PaymentHistoryItem,
   type PaymentProfile,
@@ -198,6 +196,25 @@ const styles = `
     gap: 12px;
     grid-template-columns: repeat(2, 1fr);
   }
+  .payarea-stripe-shell {
+    border: 1px solid rgba(229,229,229,0.12);
+    border-radius: 14px;
+    background: #2A3439;
+    padding: 14px;
+  }
+  .payarea-stripe-shell button {
+    border: none;
+    border-radius: 12px;
+    padding: 12px 14px;
+    font: inherit;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    background: #26A69A;
+    color: #fff;
+    font-weight: 600;
+  }
   .payarea-field {
     display: flex;
     flex-direction: column;
@@ -228,6 +245,9 @@ const styles = `
     gap: 10px;
     flex-wrap: wrap;
     margin-top: 14px;
+  }
+  .payarea-actions > * {
+    flex: 0 1 auto;
   }
   .payarea-btn {
     border: none;
@@ -341,12 +361,43 @@ const styles = `
     .payarea-grid {
       grid-template-columns: 1fr;
     }
+    .payarea-side {
+      order: -1;
+    }
   }
   @media (max-width: 720px) {
+    .payarea-root {
+      padding: 22px 12px 44px;
+    }
+    .payarea-hero {
+      align-items: stretch;
+    }
+    .payarea-back {
+      width: 100%;
+      text-align: center;
+      justify-content: center;
+    }
     .payarea-metrics,
     .payarea-form-grid,
     .payarea-table-row {
       grid-template-columns: 1fr;
+    }
+    .payarea-table-row {
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .payarea-item-top {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .payarea-row {
+      flex-direction: column;
+    }
+    .payarea-row > * {
+      width: 100%;
+    }
+    .payarea-actions > * {
+      flex: 1 1 100%;
     }
     .payarea-section {
       padding: 18px;
@@ -399,11 +450,8 @@ export default function PaymentsClient() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
-
-  const [cardName, setCardName] = useState("");
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
-  const [cardCvv, setCardCvv] = useState("");
+  const [cardResetKey, setCardResetKey] = useState(0);
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
 
   const [editingBankId, setEditingBankId] = useState<string | null>(null);
   const [bankAccountName, setBankAccountName] = useState("");
@@ -485,6 +533,14 @@ export default function PaymentsClient() {
     () => paymentHistory.reduce((sum, item) => sum + Number.parseFloat(String(item.amount ?? 0) || "0"), 0),
     [paymentHistory]
   );
+  const activeCard = useMemo(
+    () => cards.find((card) => card.isDefault) ?? cards[0] ?? null,
+    [cards]
+  );
+  const activeBank = useMemo(
+    () => banks.find((bank) => String(bank.default ?? 0) === "1") ?? banks[0] ?? null,
+    [banks]
+  );
 
   async function runAction(key: string, action: () => Promise<void>) {
     setBusyAction(key);
@@ -496,47 +552,6 @@ export default function PaymentsClient() {
       setError(nextError instanceof Error ? nextError.message : "Something went wrong.");
     } finally {
       setBusyAction(null);
-    }
-  }
-
-  async function handleAddCard() {
-    const trimmedName = cardName.trim();
-    const digits = cardNumber.trim().replace(/\s+/g, "").replace(/\D/g, "");
-    const expiry = cardExpiry.trim().replace(/\s+/g, "");
-    const [rawMonth, rawYear] = expiry.split("/");
-    const monthNumber = Number.parseInt(rawMonth ?? "", 10);
-    const normalizedMonth = Number.isFinite(monthNumber) ? String(monthNumber).padStart(2, "0") : "";
-    const trimmedYear = String(rawYear ?? "").trim();
-    const normalizedYear =
-      trimmedYear.length === 2
-        ? `20${trimmedYear}`
-        : trimmedYear.length === 4
-          ? trimmedYear
-          : "";
-    const normalizedCvv = cardCvv.trim().replace(/\D/g, "");
-
-    if (!trimmedName) throw new Error("Cardholder name is required.");
-    if (digits.length < 12) throw new Error("Enter a valid card number.");
-    if (!rawMonth || !rawYear) throw new Error("Expiry must be in MM/YY format.");
-    if (!normalizedMonth || monthNumber < 1 || monthNumber > 12) throw new Error("Expiry month is invalid.");
-    if (!/^\d{4}$/.test(normalizedYear)) throw new Error("Expiry year is invalid.");
-    if (normalizedCvv.length < 3) throw new Error("CVV must be at least 3 digits.");
-
-    await addSavedCard({
-      name: trimmedName,
-      card_number: digits,
-      expire_month: normalizedMonth,
-      expire_year: normalizedYear,
-      cvv: normalizedCvv,
-    });
-    setCardName("");
-    setCardNumber("");
-    setCardExpiry("");
-    setCardCvv("");
-    setSuccess(nextPath ? "Card added. Taking you back to finish posting." : "Card added.");
-    await loadAll();
-    if (nextPath) {
-      router.push(nextPath);
     }
   }
 
@@ -765,72 +780,93 @@ export default function PaymentsClient() {
                 <section className="payarea-card">
                   <div className="payarea-section">
                     <div className="payarea-section-head">
-                      <h2 className="payarea-section-title">Saved cards</h2>
+                      <h2 className="payarea-section-title">{editingCardId ? "Edit card" : "Active card"}</h2>
                       <span className="payarea-pill">{cards.length} on file</span>
                     </div>
 
                     {cards.length === 0 && (
                       <div className="payarea-banner">
-                        A saved card is required before posting a job. Add one here and the post-job flow will unlock automatically.
+                        A saved Stripe card is required before posting a job. Add one here and the post-job flow will unlock automatically.
                       </div>
                     )}
+                    {editingCardId ? (
+                      <div className="payarea-banner">
+                        Add a replacement card below. We&apos;ll make the new card your default payment method and remove the old one once Stripe saves it.
+                      </div>
+                    ) : null}
 
-                    <div className="payarea-form-grid">
-                      <label className="payarea-field full">
-                        <span className="payarea-label">Name on card</span>
-                        <input className="payarea-input" value={cardName} onChange={(e) => setCardName(e.target.value)} placeholder="Jane Doe" />
-                      </label>
-                      <label className="payarea-field full">
-                        <span className="payarea-label">Card number</span>
-                        <input
-                          className="payarea-input"
-                          inputMode="numeric"
-                          value={cardNumber}
-                          onChange={(e) => setCardNumber(e.target.value.replace(/[^\d]/g, ""))}
-                          placeholder="4242424242424242"
+                    {cards.length === 0 || editingCardId ? (
+                      <div className="payarea-stripe-shell">
+                        <StripeSetupCardForm
+                          buttonLabel={editingCardId ? "Replace card" : "Add secure card"}
+                          makeDefaultOnSuccess={Boolean(editingCardId)}
+                          resetKey={`${cardResetKey}-${editingCardId ?? "new"}`}
+                          onSuccess={async () => {
+                            if (editingCardId) {
+                              await deleteSavedCard(editingCardId);
+                              setEditingCardId(null);
+                              setSuccess("Card replaced successfully.");
+                            } else {
+                              setSuccess(nextPath ? "Card added. Taking you back to finish posting." : "Card added.");
+                            }
+                            setCardResetKey((current) => current + 1);
+                            await loadAll();
+                            if (nextPath) {
+                              router.push(nextPath);
+                            }
+                          }}
+                          onError={(message) => setError(message)}
                         />
-                      </label>
-                      <label className="payarea-field">
-                        <span className="payarea-label">Expiry (MM/YY)</span>
-                        <input className="payarea-input" value={cardExpiry} onChange={(e) => setCardExpiry(e.target.value)} placeholder="08/28" />
-                      </label>
-                      <label className="payarea-field">
-                        <span className="payarea-label">CVV</span>
-                        <input
-                          className="payarea-input"
-                          inputMode="numeric"
-                          value={cardCvv}
-                          onChange={(e) => setCardCvv(e.target.value.replace(/[^\d]/g, ""))}
-                          placeholder="123"
-                        />
-                      </label>
-                    </div>
-                    <div className="payarea-actions">
-                      <button
-                        className="payarea-btn primary"
-                        disabled={busyAction === "card-add"}
-                        onClick={() => runAction("card-add", handleAddCard)}
-                      >
-                        Add card
-                      </button>
-                    </div>
-
-                    <div className="payarea-list" style={{ marginTop: 16 }}>
-                      {cards.length > 0 ? cards.map((card) => (
-                        <div className="payarea-item" key={card._id ?? maskCardNumber(card.card_number)}>
+                        {editingCardId ? (
+                          <div className="payarea-actions">
+                            <button
+                              className="payarea-btn secondary"
+                              onClick={() => {
+                                setEditingCardId(null);
+                                setError(null);
+                                setSuccess(null);
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : activeCard ? (
+                      <div className="payarea-list" style={{ marginTop: 16 }}>
+                        <div className="payarea-item" key={activeCard.id}>
                           <div className="payarea-item-top">
                             <div>
-                              <div className="payarea-item-title">{maskCardNumber(card.card_number)}</div>
+                              <div className="payarea-item-title">
+                                {activeCard.brand ? `${activeCard.brand[0].toUpperCase()}${activeCard.brand.slice(1)} ` : ""}
+                                •••• {activeCard.last4 || "----"}
+                              </div>
                               <div className="payarea-item-sub">
-                                Expires {card.expire_month || "—"}/{String(card.expire_year || "").slice(-2) || "—"}
+                                Expires {activeCard.exp_month || "—"}/{String(activeCard.exp_year || "").slice(-2) || "—"}
                               </div>
                             </div>
+                            <span className="payarea-pill">Default</span>
+                          </div>
+                          <div className="payarea-row">
+                            <button
+                              className="payarea-btn secondary"
+                              onClick={() => {
+                                setEditingCardId(activeCard.id);
+                                setCardResetKey((current) => current + 1);
+                                setError(null);
+                                setSuccess(null);
+                              }}
+                            >
+                              Edit card
+                            </button>
                             <button
                               className="payarea-btn danger"
-                              disabled={busyAction === `card-delete-${card._id}`}
-                              onClick={() => runAction(`card-delete-${card._id}`, async () => {
-                                if (!card._id) return;
-                                await deleteSavedCard(card._id);
+                              disabled={busyAction === `card-delete-${activeCard.id}`}
+                              onClick={() => runAction(`card-delete-${activeCard.id}`, async () => {
+                                await deleteSavedCard(activeCard.id);
+                                if (editingCardId === activeCard.id) {
+                                  setEditingCardId(null);
+                                }
                                 setSuccess("Card deleted.");
                                 await loadAll();
                               })}
@@ -839,106 +875,93 @@ export default function PaymentsClient() {
                             </button>
                           </div>
                         </div>
-                      )) : <div className="payarea-empty">No saved cards yet.</div>}
-                    </div>
+                      </div>
+                    ) : <div className="payarea-empty">No saved cards yet.</div>}
                   </div>
                 </section>
 
                 <section className="payarea-card">
                   <div className="payarea-section">
                     <div className="payarea-section-head">
-                      <h2 className="payarea-section-title">{editingBankId ? "Edit bank account" : "Saved bank accounts"}</h2>
+                      <h2 className="payarea-section-title">{editingBankId ? "Edit bank account" : "Active bank account"}</h2>
                       <span className="payarea-pill">{banks.length} saved</span>
                     </div>
 
-                    <div className="payarea-form-grid">
-                      <label className="payarea-field full">
-                        <span className="payarea-label">Account name</span>
-                        <input className="payarea-input" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} placeholder="Jane Doe" />
-                      </label>
-                      <label className="payarea-field">
-                        <span className="payarea-label">Bank name</span>
-                        <input className="payarea-input" value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="ANZ" />
-                      </label>
-                      <label className="payarea-field">
-                        <span className="payarea-label">Account number</span>
-                        <input
-                          className="payarea-input"
-                          inputMode="numeric"
-                          value={bankAccountNumber}
-                          onChange={(e) => setBankAccountNumber(e.target.value.replace(/[^\d]/g, ""))}
-                          placeholder="1234567890123456"
-                        />
-                      </label>
-                    </div>
-                    <div className="payarea-actions">
-                      <button
-                        className="payarea-btn primary"
-                        disabled={busyAction === "bank-save"}
-                        onClick={() => runAction("bank-save", handleSaveBank)}
-                      >
-                        {editingBankId ? "Save bank" : "Add bank"}
-                      </button>
-                      {editingBankId && (
-                        <button
-                          className="payarea-btn secondary"
-                          onClick={() => {
-                            setEditingBankId(null);
-                            setBankAccountName("");
-                            setBankName("");
-                            setBankAccountNumber("");
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="payarea-list" style={{ marginTop: 16 }}>
-                      {banks.length > 0 ? banks.map((bank) => (
-                        <div className="payarea-item" key={bank._id ?? `${bank.account_name}-${bank.account_number}`}>
+                    {banks.length === 0 || editingBankId ? (
+                      <>
+                        <div className="payarea-form-grid">
+                          <label className="payarea-field full">
+                            <span className="payarea-label">Account name</span>
+                            <input className="payarea-input" value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} placeholder="Jane Doe" />
+                          </label>
+                          <label className="payarea-field">
+                            <span className="payarea-label">Bank name</span>
+                            <input className="payarea-input" value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="ANZ" />
+                          </label>
+                          <label className="payarea-field">
+                            <span className="payarea-label">Account number</span>
+                            <input
+                              className="payarea-input"
+                              inputMode="numeric"
+                              value={bankAccountNumber}
+                              onChange={(e) => setBankAccountNumber(e.target.value.replace(/[^\d]/g, ""))}
+                              placeholder="1234567890123456"
+                            />
+                          </label>
+                        </div>
+                        <div className="payarea-actions">
+                          <button
+                            className="payarea-btn primary"
+                            disabled={busyAction === "bank-save"}
+                            onClick={() => runAction("bank-save", handleSaveBank)}
+                          >
+                            {editingBankId ? "Save bank" : "Add bank"}
+                          </button>
+                          {editingBankId ? (
+                            <button
+                              className="payarea-btn secondary"
+                              onClick={() => {
+                                setEditingBankId(null);
+                                setBankAccountName("");
+                                setBankName("");
+                                setBankAccountNumber("");
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          ) : null}
+                        </div>
+                      </>
+                    ) : activeBank ? (
+                      <div className="payarea-list" style={{ marginTop: 16 }}>
+                        <div className="payarea-item" key={activeBank._id ?? `${activeBank.account_name}-${activeBank.account_number}`}>
                           <div className="payarea-item-top">
                             <div>
-                              <div className="payarea-item-title">{bank.account_name || bank.bank_name || "Bank account"}</div>
-                              <div className="payarea-item-sub">{bank.bank_name || "Bank"} • {maskBankAccount(bank.account_number)}</div>
+                              <div className="payarea-item-title">{activeBank.account_name || activeBank.bank_name || "Bank account"}</div>
+                              <div className="payarea-item-sub">{activeBank.bank_name || "Bank"} • {maskBankAccount(activeBank.account_number)}</div>
                             </div>
-                            {String(bank.default ?? 0) === "1" ? (
-                              <span className="payarea-pill">Default</span>
-                            ) : (
-                              <button
-                                className="payarea-btn secondary"
-                                disabled={busyAction === `bank-default-${bank._id}`}
-                                onClick={() => runAction(`bank-default-${bank._id}`, async () => {
-                                  if (!bank._id) return;
-                                  await setDefaultBank(bank._id);
-                                  setSuccess("Default bank updated.");
-                                  await loadAll();
-                                })}
-                              >
-                                Make default
-                              </button>
-                            )}
+                            <span className="payarea-pill">Default</span>
                           </div>
                           <div className="payarea-row">
                             <button
                               className="payarea-btn secondary"
                               onClick={() => {
-                                setEditingBankId(bank._id ?? null);
-                                setBankAccountName(bank.account_name ?? "");
-                                setBankName(bank.bank_name ?? "");
-                                setBankAccountNumber(bank.account_number ?? "");
+                                setEditingBankId(activeBank._id ?? null);
+                                setBankAccountName(activeBank.account_name ?? "");
+                                setBankName(activeBank.bank_name ?? "");
+                                setBankAccountNumber(activeBank.account_number ?? "");
                               }}
                             >
-                              Edit
+                              Edit bank
                             </button>
                             <button
                               className="payarea-btn danger"
-                              disabled={busyAction === `bank-delete-${bank._id}`}
-                              onClick={() => runAction(`bank-delete-${bank._id}`, async () => {
-                                if (!bank._id) return;
-                                await deleteBankAccount(bank._id);
+                              disabled={busyAction === `bank-delete-${activeBank._id}`}
+                              onClick={() => runAction(`bank-delete-${activeBank._id}`, async () => {
+                                if (!activeBank._id) return;
+                                await deleteBankAccount(activeBank._id);
                                 setSuccess("Bank account deleted.");
-                                if (editingBankId === bank._id) {
+                                if (editingBankId === activeBank._id) {
                                   setEditingBankId(null);
                                   setBankAccountName("");
                                   setBankName("");
@@ -951,8 +974,10 @@ export default function PaymentsClient() {
                             </button>
                           </div>
                         </div>
-                      )) : <div className="payarea-empty">No saved bank accounts yet.</div>}
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="payarea-empty">No saved bank accounts yet.</div>
+                    )}
                   </div>
                 </section>
               </aside>

@@ -335,7 +335,11 @@ export default function VerifyOtpPage() {
           throw new Error("Use the development code shown on screen.");
         }
         setAuthToken("dev-local-token");
-        router.push(nextPath || "/profile");
+        router.push(
+          nextPath
+            ? `/auth/signup/profile-setup?next=${encodeURIComponent(nextPath)}`
+            : "/auth/signup/profile-setup"
+        );
         return;
       }
       if (!serviceSid) {
@@ -363,7 +367,13 @@ export default function VerifyOtpPage() {
       } catch (profileError) {
         console.warn("[auth] profile fetch after verify failed:", profileError);
       }
-      router.push(nextPath || (flow === "signup" ? "/profile" : "/"));
+      router.push(
+        flow === "signup"
+          ? nextPath
+            ? `/auth/signup/profile-setup?next=${encodeURIComponent(nextPath)}`
+            : "/auth/signup/profile-setup"
+          : nextPath || "/"
+      );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Invalid code");
     } finally {

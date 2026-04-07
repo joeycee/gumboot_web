@@ -202,6 +202,15 @@ const styles = `
     gap: 8px;
     align-items: center;
   }
+  .jdd-owner {
+    margin: 10px 0 0;
+    font-size: 12px;
+    color: rgba(15,23,42,0.62);
+  }
+  .jdd-owner strong {
+    color: rgba(15,23,42,0.88);
+    font-weight: 700;
+  }
   .jdd-top-chip {
     display: inline-flex;
     align-items: center;
@@ -768,6 +777,11 @@ function DrawerContent({
             <div className="jdd-hero-copy">
               <h2 className="jdd-title">{job.title || "Untitled Job"}</h2>
               <p className="jdd-type">{job.jobTypeName || "General"}</p>
+              {job.ownerName ? (
+                <p className="jdd-owner">
+                  Posted by <strong>{job.ownerName}</strong>
+                </p>
+              ) : null}
               <div className="jdd-top-meta">
                 <span className="jdd-top-chip">{locationSummary}</span>
                 <span className={`jdd-top-chip price${job.price == null ? " unknown" : ""}`}>
@@ -840,7 +854,7 @@ function DrawerContent({
 
         <div className="jdd-footer">
           <button className="jdd-apply-btn" onClick={() => onApply(job.id)}>
-            Apply for this job
+            View job
           </button>
         </div>
       </div>

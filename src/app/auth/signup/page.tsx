@@ -300,6 +300,61 @@ const styles = `
     transition: color 0.14s, border-color 0.14s;
   }
   .sp-login-link:hover { color: #2ec4b6; border-color: rgba(46,196,182,0.60); }
+
+  @media (max-width: 640px) {
+    .sp-root {
+      align-items: flex-start;
+      padding: 20px 14px 40px;
+    }
+    .sp-grid {
+      gap: 14px;
+    }
+    .sp-hero,
+    .sp-form-panel {
+      border-radius: 18px;
+    }
+    .sp-hero {
+      min-height: unset;
+      padding: 28px 22px 24px;
+    }
+    .sp-logo {
+      font-size: 34px;
+      margin-bottom: 14px;
+    }
+    .sp-tagline {
+      max-width: none;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+    .sp-stats {
+      grid-template-columns: 1fr;
+      margin-top: 24px;
+    }
+    .sp-stat {
+      padding: 14px 12px;
+    }
+    .sp-form-panel {
+      padding: 24px 20px;
+    }
+    .sp-form-title {
+      font-size: 24px;
+    }
+    .sp-form-sub {
+      margin-bottom: 20px;
+    }
+    .sp-field-row {
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
+    .sp-phone-row {
+      display: grid;
+      grid-template-columns: 84px minmax(0, 1fr);
+    }
+    .sp-submit {
+      min-height: 50px;
+      font-size: 12px;
+    }
+  }
 `;
 
 export default function SignupPage() {

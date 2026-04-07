@@ -1,19 +1,16 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
-
-const PAYMENT_DRAFT_KEY = "gumboot_signup_payment_setup";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { ApiError } from "@/lib/api";
+import { StripeSetupCardForm } from "@/components/StripeSetupCardForm";
+import { addBankAccount, extractCardsFromResponse, getSavedCards } from "@/lib/payments";
 
 type PaymentDraft = {
   bankAccountName: string;
   bankAccountNumber: string;
-  bankRoutingNumber: string;
-  cardHolderName: string;
-  cardNumber: string;
-  cardExpiry: string;
-  cardCvc: string;
-  skipped: boolean;
+  bankName: string;
 };
 
 const styles = `
@@ -21,25 +18,33 @@ const styles = `
 
   .pay-root * { box-sizing: border-box; margin: 0; padding: 0; }
   .pay-root {
-    min-height: 100dvh;
-    background: #2A3439;
+    min-height: calc(100vh - 56px);
+    background:
+      radial-gradient(ellipse at 20% 10%, rgba(91,110,127,0.18) 0%, transparent 55%),
+      radial-gradient(ellipse at 80% 90%, rgba(38,166,154,0.08) 0%, transparent 50%),
+      #2A3439;
     color: #E5E5E5;
     font-family: 'DM Sans', sans-serif;
-    padding: 34px 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-image:
-      radial-gradient(ellipse at 20% 10%, rgba(91,110,127,0.18) 0%, transparent 55%),
-      radial-gradient(ellipse at 80% 90%, rgba(38,166,154,0.08) 0%, transparent 50%);
+    padding: 34px 20px 72px;
   }
   .pay-card {
     width: 100%;
-    max-width: 860px;
+    max-width: 880px;
+    margin: 0 auto;
     border: 1px solid rgba(229,229,229,0.08);
     border-radius: 18px;
-    background: #3E4A51;
+    background: rgba(62,74,81,0.85);
     padding: 28px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.28);
+  }
+  .pay-back {
+    display: inline-flex;
+    margin-bottom: 18px;
+    color: rgba(229,229,229,0.60);
+    text-decoration: none;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
   }
   .pay-eyebrow {
     font-size: 10px;
@@ -56,9 +61,10 @@ const styles = `
   }
   .pay-sub {
     font-size: 13px;
-    color: rgba(229,229,229,0.52);
+    color: rgba(229,229,229,0.56);
     margin-bottom: 24px;
     line-height: 1.6;
+    max-width: 720px;
   }
   .pay-grid {
     display: grid;
@@ -106,20 +112,50 @@ const styles = `
     gap: 8px;
     grid-template-columns: 1fr 110px;
   }
+  .pay-stripe {
+    display: grid;
+    gap: 12px;
+  }
+  .pay-stripe-shell {
+    border: 1px solid rgba(229,229,229,0.12);
+    border-radius: 12px;
+    background: #2A3439;
+    padding: 12px;
+  }
+  .pay-stripe-shell button {
+    border: none;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    background: #26A69A;
+    color: #fff;
+    font-weight: 600;
+  }
+  .pay-error, .pay-success, .pay-note {
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 13px;
+    margin-bottom: 12px;
+    line-height: 1.6;
+  }
   .pay-error {
     border: 1px solid rgba(183,91,91,0.42);
     background: rgba(183,91,91,0.12);
-    border-radius: 10px;
-    padding: 10px 12px;
     color: rgba(245,196,196,0.95);
-    font-size: 13px;
-    margin-bottom: 12px;
+  }
+  .pay-success {
+    border: 1px solid rgba(38,166,154,0.40);
+    background: rgba(38,166,154,0.12);
+    color: rgba(229,245,242,0.94);
   }
   .pay-note {
-    font-size: 12px;
+    border: 1px solid rgba(229,229,229,0.10);
+    background: rgba(229,229,229,0.05);
     color: rgba(229,229,229,0.65);
-    margin-top: 10px;
-    line-height: 1.5;
   }
   .pay-actions {
     display: flex;
@@ -147,58 +183,44 @@ const styles = `
     color: #fff;
     font-weight: 600;
   }
+  .pay-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  @media (max-width: 640px) {
+    .pay-root {
+      padding: 18px 12px 42px;
+    }
+    .pay-card {
+      border-radius: 18px;
+      padding: 20px 16px;
+    }
+    .pay-title {
+      font-size: 28px;
+    }
+    .pay-sub {
+      font-size: 13px;
+      margin-bottom: 18px;
+    }
+    .pay-panel {
+      padding: 12px;
+      border-radius: 16px;
+    }
+    .pay-inline {
+      grid-template-columns: 1fr;
+    }
+    .pay-actions {
+      justify-content: stretch;
+    }
+    .pay-btn {
+      width: 100%;
+      min-height: 48px;
+    }
+  }
 `;
 
-function readDraft(): PaymentDraft {
-  if (typeof window === "undefined") {
-    return {
-      bankAccountName: "",
-      bankAccountNumber: "",
-      bankRoutingNumber: "",
-      cardHolderName: "",
-      cardNumber: "",
-      cardExpiry: "",
-      cardCvc: "",
-      skipped: false,
-    };
-  }
-  const raw = window.localStorage.getItem(PAYMENT_DRAFT_KEY);
-  if (!raw) {
-    return {
-      bankAccountName: "",
-      bankAccountNumber: "",
-      bankRoutingNumber: "",
-      cardHolderName: "",
-      cardNumber: "",
-      cardExpiry: "",
-      cardCvc: "",
-      skipped: false,
-    };
-  }
-  try {
-    const parsed = JSON.parse(raw) as Partial<PaymentDraft>;
-    return {
-      bankAccountName: parsed.bankAccountName ?? "",
-      bankAccountNumber: parsed.bankAccountNumber ?? "",
-      bankRoutingNumber: parsed.bankRoutingNumber ?? "",
-      cardHolderName: parsed.cardHolderName ?? "",
-      cardNumber: parsed.cardNumber ?? "",
-      cardExpiry: parsed.cardExpiry ?? "",
-      cardCvc: parsed.cardCvc ?? "",
-      skipped: parsed.skipped ?? false,
-    };
-  } catch {
-    return {
-      bankAccountName: "",
-      bankAccountNumber: "",
-      bankRoutingNumber: "",
-      cardHolderName: "",
-      cardNumber: "",
-      cardExpiry: "",
-      cardCvc: "",
-      skipped: false,
-    };
-  }
+function hasBankValues(form: PaymentDraft) {
+  return form.bankAccountName.trim() || form.bankAccountNumber.trim() || form.bankName.trim();
 }
 
 export default function PaymentSetupPage() {
@@ -206,46 +228,90 @@ export default function PaymentSetupPage() {
   const searchParams = useSearchParams();
   const required = useMemo(() => searchParams.get("required") === "1", [searchParams]);
   const nextPath = useMemo(() => searchParams.get("next"), [searchParams]);
-  const [form, setForm] = useState<PaymentDraft>(() => readDraft());
+  const isSettingsMode = useMemo(() => searchParams.get("mode") === "settings", [searchParams]);
+  const [form, setForm] = useState<PaymentDraft>({
+    bankAccountName: "",
+    bankAccountNumber: "",
+    bankName: "",
+  });
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [hasSavedCard, setHasSavedCard] = useState(false);
+  const [cardLoading, setCardLoading] = useState(true);
+  const [cardResetKey, setCardResetKey] = useState(0);
 
-  function saveDraft(next: PaymentDraft) {
-    window.localStorage.setItem(PAYMENT_DRAFT_KEY, JSON.stringify(next));
-  }
+  useEffect(() => {
+    let mounted = true;
 
-  function hasBankValues() {
-    return (
-      form.bankAccountName.trim() ||
-      form.bankAccountNumber.trim() ||
-      form.bankRoutingNumber.trim()
-    );
-  }
+    (async () => {
+      try {
+        setCardLoading(true);
+        const response = await getSavedCards();
+        if (!mounted) return;
+        setHasSavedCard(extractCardsFromResponse(response).length > 0);
+      } catch {
+        if (!mounted) return;
+        setHasSavedCard(false);
+      } finally {
+        if (mounted) setCardLoading(false);
+      }
+    })();
 
-  function hasCardValues() {
-    return (
-      form.cardHolderName.trim() ||
-      form.cardNumber.trim() ||
-      form.cardExpiry.trim() ||
-      form.cardCvc.trim()
-    );
-  }
+    return () => {
+      mounted = false;
+    };
+  }, [cardResetKey]);
 
-  function handleComplete(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleComplete(event: React.FormEvent) {
+    event.preventDefault();
     setError(null);
-    if (required && !hasBankValues() && !hasCardValues()) {
+    setSuccess(null);
+
+    const bankFilled = Boolean(hasBankValues(form));
+    if (required && !bankFilled && !hasSavedCard) {
       setError("Bank or card details are required for this flow.");
       return;
     }
-    const next: PaymentDraft = { ...form, skipped: false };
-    saveDraft(next);
-    router.push(nextPath || "/profile");
+
+    if (bankFilled && (!form.bankAccountName.trim() || !form.bankAccountNumber.trim() || !form.bankName.trim())) {
+      setError("Please complete all bank fields or leave them all blank.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      if (bankFilled) {
+        await addBankAccount({
+          account_name: form.bankAccountName.trim(),
+          account_number: form.bankAccountNumber.trim(),
+          bank_name: form.bankName.trim(),
+        });
+      }
+
+      setSuccess("Payment details saved.");
+      setForm({
+        bankAccountName: "",
+        bankAccountNumber: "",
+        bankName: "",
+      });
+      window.setTimeout(() => {
+        router.push(isSettingsMode ? "/profile/settings?saved=1" : nextPath || "/profile");
+      }, 500);
+    } catch (nextError) {
+      if (nextError instanceof ApiError && (nextError.status === 401 || nextError.status === 403)) {
+        router.replace(`/auth/login?next=${encodeURIComponent("/auth/signup/payment-setup")}`);
+        return;
+      }
+      setError(nextError instanceof Error ? nextError.message : "Unable to save payment details.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function handleSkip() {
-    const next: PaymentDraft = { ...form, skipped: true };
-    saveDraft(next);
-    router.push(nextPath || "/profile");
+    router.push(isSettingsMode ? "/profile/settings" : nextPath || "/profile");
   }
 
   return (
@@ -253,13 +319,20 @@ export default function PaymentSetupPage() {
       <style>{styles}</style>
       <div className="pay-root">
         <section className="pay-card">
-          <p className="pay-eyebrow">Signup • Step 3 of 3</p>
+          <Link className="pay-back" href={isSettingsMode ? "/profile/settings" : "/auth/signup/profile-setup"}>
+            Back
+          </Link>
+          <p className="pay-eyebrow">{isSettingsMode ? "Billing Setup" : "Signup • Step 3 of 3"}</p>
           <h1 className="pay-title">Payment setup</h1>
           <p className="pay-sub">
-            Add your own bank account or card details. You can skip this for now and complete it later.
+            Add a bank account here, and save cards through Stripe&apos;s secure hosted form so card details never pass through Gumboot.
           </p>
 
-          {error && <div className="pay-error">{error}</div>}
+          {error ? <div className="pay-error">{error}</div> : null}
+          {success ? <div className="pay-success">{success}</div> : null}
+          <div className="pay-note">
+            You can leave this screen without saving. If the current flow requires payment details, at least one complete section must be submitted.
+          </div>
 
           <form onSubmit={handleComplete}>
             <div className="pay-grid">
@@ -277,80 +350,54 @@ export default function PaymentSetupPage() {
                   <label className="pay-label">Account number</label>
                   <input
                     className="pay-input"
+                    inputMode="numeric"
                     value={form.bankAccountNumber}
                     onChange={(e) => setForm({ ...form, bankAccountNumber: e.target.value })}
                   />
                 </div>
                 <div className="pay-field">
-                  <label className="pay-label">Routing number</label>
+                  <label className="pay-label">Bank name</label>
                   <input
                     className="pay-input"
-                    value={form.bankRoutingNumber}
-                    onChange={(e) => setForm({ ...form, bankRoutingNumber: e.target.value })}
+                    value={form.bankName}
+                    onChange={(e) => setForm({ ...form, bankName: e.target.value })}
                   />
                 </div>
               </section>
 
               <section className="pay-panel">
-                <h2 className="pay-panel-title">Card details</h2>
-                <div className="pay-field">
-                  <label className="pay-label">Card holder name</label>
-                  <input
-                    className="pay-input"
-                    value={form.cardHolderName}
-                    onChange={(e) => setForm({ ...form, cardHolderName: e.target.value })}
-                  />
-                </div>
-                <div className="pay-field">
-                  <label className="pay-label">Card number</label>
-                  <input
-                    className="pay-input"
-                    value={form.cardNumber}
-                    onChange={(e) => setForm({ ...form, cardNumber: e.target.value })}
-                  />
-                </div>
-                <div className="pay-inline">
-                  <div className="pay-field">
-                    <label className="pay-label">Expiry</label>
-                    <input
-                      className="pay-input"
-                      placeholder="MM/YY"
-                      value={form.cardExpiry}
-                      onChange={(e) => setForm({ ...form, cardExpiry: e.target.value })}
-                    />
+                <h2 className="pay-panel-title">Saved card</h2>
+                <div className="pay-stripe">
+                  <div className="pay-note" style={{ marginBottom: 0 }}>
+                    {cardLoading
+                      ? "Checking your Stripe payment methods…"
+                      : hasSavedCard
+                        ? "A saved card is already on file. You can still add another secure card below."
+                        : "No saved card yet. Add one securely with Stripe if you want card billing ready now."}
                   </div>
-                  <div className="pay-field">
-                    <label className="pay-label">CVC</label>
-                    <input
-                      className="pay-input"
-                      value={form.cardCvc}
-                      onChange={(e) => setForm({ ...form, cardCvc: e.target.value })}
+                  <div className="pay-stripe-shell">
+                    <StripeSetupCardForm
+                      buttonLabel="Save secure card"
+                      makeDefaultOnSuccess
+                      resetKey={cardResetKey}
+                      onSuccess={() => {
+                        setHasSavedCard(true);
+                        setCardResetKey((current) => current + 1);
+                        setSuccess("Card saved securely.");
+                      }}
+                      onError={(message) => setError(message)}
                     />
                   </div>
                 </div>
               </section>
             </div>
 
-            <p className="pay-note">
-              If a user tries to post or accept a job without payment details, route them back here with
-              <code> ?required=1</code> to enforce completion.
-            </p>
-
             <div className="pay-actions">
-              <button
-                type="button"
-                className="pay-btn pay-btn-secondary"
-                onClick={() => router.push("/auth/signup/profile-setup")}
-              >
-                Back
+              <button className="pay-btn pay-btn-secondary" onClick={handleSkip} type="button">
+                Skip for now
               </button>
-              {!required && (
-                <button type="button" className="pay-btn pay-btn-secondary" onClick={handleSkip}>
-                  Skip for now
-                </button>
-              )}
-              <button type="submit" className="pay-btn pay-btn-primary">
-                Save and finish
+              <button className="pay-btn pay-btn-primary" disabled={saving} type="submit">
+                {saving ? "Saving…" : "Save details"}
               </button>
             </div>
           </form>

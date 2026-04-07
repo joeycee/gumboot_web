@@ -14,15 +14,12 @@ export type PaymentProfile = {
 };
 
 export type SavedCard = {
-  _id?: string;
-  userId?: string;
-  card_number?: string | number;
-  expire_month?: string;
-  expire_year?: string;
-  cvv?: string;
-  card_token?: string;
-  createdAt?: string;
-  updatedAt?: string;
+  id: string;
+  brand?: string;
+  last4?: string;
+  exp_month?: number | null;
+  exp_year?: number | null;
+  isDefault?: boolean;
 };
 
 export type BankAccount = {
@@ -140,6 +137,10 @@ export function maskCardNumber(value: string | number | undefined) {
   return `•••• ${digits.slice(-4)}`;
 }
 
+export function formatSavedCardLabel(card: SavedCard) {
+  return maskCardNumber(card.last4);
+}
+
 export function maskBankAccount(value: string | undefined) {
   const digits = String(value ?? "").replace(/\D/g, "");
   if (!digits) return "No account number";
@@ -151,25 +152,25 @@ export async function getPaymentProfile() {
 }
 
 export async function getSavedCards() {
-  return api<ApiEnvelope<SavedCard[]>>("/card_list", { method: "GET" });
+  return api<ApiEnvelope<SavedCard[]>>("/billing/payment-methods", { method: "GET" });
 }
 
-export async function addSavedCard(payload: {
-  name?: string;
-  card_number: string;
-  expire_month: string;
-  expire_year: string;
-  cvv: string;
-}) {
-  return api<ApiEnvelope<unknown>>("/add_card", {
+export async function createCardSetupIntent() {
+  return api<ApiEnvelope<{ clientSecret: string; customerId: string; setupIntentId: string }>>(
+    "/billing/setup-intent",
+    { method: "POST" }
+  );
+}
+
+export async function setDefaultSavedCard(paymentMethodId: string) {
+  return api<ApiEnvelope<SavedCard>>("/billing/default-payment-method", {
     method: "POST",
-    body: payload,
-    includeAppKeys: true,
+    body: { paymentMethodId },
   });
 }
 
 export async function deleteSavedCard(cardId: string) {
-  return api<ApiEnvelope<unknown>>("/delete_card", { method: "DELETE", body: { cardId } });
+  return api<ApiEnvelope<unknown>>(`/billing/payment-method/${cardId}`, { method: "DELETE" });
 }
 
 export async function getBankAccounts() {
@@ -221,13 +222,10 @@ export async function getWorkerWalletHistory() {
 }
 
 export async function recordJobPayment(payload: {
-  transactionId: string;
   jobId: string;
-  transaction_status: 1;
-  amount: number;
-  cancellation_charges?: number;
+  paymentMethodId?: string | null;
 }) {
-  return api<ApiEnvelope<unknown>>("/payment_transaction", {
+  return api<ApiEnvelope<{ clientSecret: string; paymentIntentId: string; transactionId: string; amount: number; currency: string }>>("/billing/create-payment-intent", {
     method: "POST",
     body: payload,
   });

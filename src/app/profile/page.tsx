@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { getApiBaseUrl, getApiOrigin } from "@/lib/api";
 
-const PROFILE_ENDPOINT = "https://api.gumboot.app/api/profile";
-const API_BASE = "https://api.gumboot.app";
+const PROFILE_ENDPOINT = `${getApiBaseUrl()}/profile`;
+const API_BASE = getApiOrigin();
 const TOKEN_STORAGE_KEYS = ["gumboot_token", "token"];
 const PROFILE_SETUP_DRAFT_KEY = "gumboot_signup_profile_setup";
 const PROFILE_CUSTOM_FIELDS_KEY = "gumboot_profile_custom_fields";
@@ -651,6 +652,9 @@ export default function ProfilePage() {
                   <div className="pp-header-actions">
                     <Link className="pp-link-btn" href="/profile/payments">
                       Wallet & payments
+                    </Link>
+                    <Link className="pp-link-btn" href="/profile/settings">
+                      Settings
                     </Link>
                   </div>
                 </div>

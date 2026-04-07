@@ -14,6 +14,7 @@ export type Job = {
   date?: string;
   shiftTime?: string;
   expDate?: string;
+  ownerName?: string;
   userRatingCount?: number;
   userAverageRating?: number;
   raw: unknown;
@@ -44,6 +45,20 @@ function parseCoordinatePair(value: unknown): { lat: number; lng: number } | nul
   // Fallback for APIs that send [lat, lng]
   if (hasValidCoordinates(a, b)) return { lat: a, lng: b };
   return null;
+}
+
+function pickOwnerName(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const row = value as Record<string, unknown>;
+  const first =
+    typeof row.firstname === "string" && row.firstname.trim()
+      ? row.firstname.trim()
+      : typeof row.name === "string" && row.name.trim()
+        ? row.name.trim()
+        : "";
+  const last = typeof row.lastname === "string" && row.lastname.trim() ? row.lastname.trim() : "";
+  const full = [first, last].filter(Boolean).join(" ").trim();
+  return full || undefined;
 }
 
 /**
@@ -97,6 +112,7 @@ export function normalizeJobs(apiBody: unknown): Job[] {
 
       const price = toNumber(row.price ?? row.job_price ?? row.amount ?? row.budget) ?? undefined;
       const jobType = (row.job_type ?? null) as { name?: unknown; image?: unknown } | null;
+      const ownerName = pickOwnerName(row.userId ?? row.user ?? row.owner);
       const jobTypeIconPath =
         Array.isArray(jobType?.image) && jobType.image.length > 0
           ? String(jobType.image[0] ?? "")
@@ -172,6 +188,7 @@ export function normalizeJobs(apiBody: unknown): Job[] {
         date,
         shiftTime,
         expDate,
+        ownerName,
         userRatingCount,
         userAverageRating,
         raw: row,

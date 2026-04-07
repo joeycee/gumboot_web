@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getJobTypes, JobType } from "@/lib/postJob";
 import { extractCardsFromResponse, getSavedCards } from "@/lib/payments";
+import { useMe } from "@/lib/useMe";
 
 type DateMode = "urgent" | "exact" | "before" | "after";
 type TimeMode = "morning" | "afternoon" | "exact-time" | "anytime";
@@ -15,6 +16,12 @@ type JobTypeOption = JobType & {
   iconPath?: string;
   jobTypeIconPath?: string;
   job_type_icon?: string;
+};
+
+type MeUser = {
+  _id?: string;
+  firstname?: string;
+  lastname?: string;
 };
 
 const styles = `
@@ -73,7 +80,147 @@ const styles = `
     outline: none;
   }
   .pj-textarea { min-height: 120px; resize: vertical; }
+  .pj-input.time-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    border: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(100%);
+    white-space: nowrap;
+  }
   .pj-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pj-time-picker {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    align-items: center;
+    gap: 16px;
+    border: 1px solid rgba(229,229,229,0.12);
+    background:
+      radial-gradient(circle at top left, rgba(38,166,154,0.16), transparent 48%),
+      linear-gradient(180deg, rgba(28,35,38,0.96), rgba(42,52,57,0.98));
+    color: #E5E5E5;
+    border-radius: 18px;
+    padding: 16px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 18px 40px rgba(12,17,19,0.20);
+  }
+  .pj-time-picker-clock {
+    width: 96px;
+    height: 96px;
+    border-radius: 999px;
+    border: 1px solid rgba(229,229,229,0.12);
+    background:
+      radial-gradient(circle at 50% 34%, rgba(255,255,255,0.08), transparent 54%),
+      linear-gradient(180deg, rgba(64,77,84,0.92), rgba(25,31,34,0.98));
+    position: relative;
+    box-shadow: inset 0 1px 10px rgba(255,255,255,0.04), 0 14px 28px rgba(0,0,0,0.24);
+  }
+  .pj-time-picker-clock::before {
+    content: "";
+    position: absolute;
+    inset: 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(229,229,229,0.08);
+  }
+  .pj-time-marker {
+    position: absolute;
+    left: 50%;
+    top: 8px;
+    width: 2px;
+    height: 10px;
+    margin-left: -1px;
+    border-radius: 999px;
+    background: rgba(229,229,229,0.28);
+    transform-origin: 50% 40px;
+  }
+  .pj-time-hand {
+    position: absolute;
+    left: 50%;
+    bottom: 50%;
+    transform-origin: 50% 100%;
+    border-radius: 999px;
+  }
+  .pj-time-hand.hour {
+    width: 4px;
+    height: 23px;
+    margin-left: -2px;
+    background: #E5E5E5;
+  }
+  .pj-time-hand.minute {
+    width: 2px;
+    height: 31px;
+    margin-left: -1px;
+    background: rgba(38,166,154,0.95);
+    box-shadow: 0 0 12px rgba(38,166,154,0.22);
+  }
+  .pj-time-hand-pin {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    margin-left: -5px;
+    margin-top: -5px;
+    border-radius: 999px;
+    background: #E5E5E5;
+    box-shadow: 0 0 0 3px rgba(38,166,154,0.22);
+  }
+  .pj-time-picker-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .pj-time-picker-label {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(229,229,229,0.42);
+  }
+  .pj-time-picker-value {
+    font-size: clamp(24px, 4vw, 32px);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: #E5E5E5;
+  }
+  .pj-time-picker-subcopy {
+    font-size: 13px;
+    line-height: 1.5;
+    color: rgba(229,229,229,0.64);
+  }
+  .pj-time-picker-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: fit-content;
+    border: 1px solid rgba(38,166,154,0.34);
+    background: linear-gradient(180deg, rgba(38,166,154,0.22), rgba(38,166,154,0.14));
+    color: #E5E5E5;
+    border-radius: 999px;
+    padding: 11px 15px;
+    font: inherit;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    white-space: nowrap;
+    box-shadow: 0 10px 24px rgba(38,166,154,0.14);
+    transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  }
+  .pj-time-picker-btn:hover {
+    transform: translateY(-1px);
+    border-color: rgba(38,166,154,0.52);
+    background: linear-gradient(180deg, rgba(38,166,154,0.28), rgba(38,166,154,0.18));
+  }
+  @media (max-width: 560px) {
+    .pj-time-picker {
+      grid-template-columns: 1fr;
+      justify-items: start;
+    }
+  }
   .pj-chip {
     border: 1px solid rgba(229,229,229,0.16);
     background: rgba(229,229,229,0.05);
@@ -151,6 +298,62 @@ const styles = `
     font-weight: 600;
   }
   .pj-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .pj-inline-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .pj-info-btn {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    border: 1px solid rgba(229,229,229,0.18);
+    background: rgba(229,229,229,0.08);
+    color: #E5E5E5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 0;
+  }
+  .pj-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(17,22,24,0.72);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 30;
+  }
+  .pj-modal {
+    width: min(100%, 460px);
+    border-radius: 18px;
+    border: 1px solid rgba(229,229,229,0.14);
+    background: #3E4A51;
+    color: #E5E5E5;
+    padding: 20px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.28);
+  }
+  .pj-modal-title {
+    margin: 0 0 10px;
+    font-family: 'DM Serif Display', serif;
+    font-size: 26px;
+    line-height: 1.1;
+  }
+  .pj-modal-copy {
+    margin: 0;
+    color: rgba(229,229,229,0.82);
+    line-height: 1.6;
+    font-size: 14px;
+  }
+  .pj-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 18px;
+  }
 
   /* Job type cards (Step 2) */
   .jt-grid {
@@ -341,7 +544,16 @@ const styles = `
   }
 `;
 
-const steps = ["Basics", "Job Type & Budget", "Images", "Date & Time", "Address", "Review"] as const;
+const steps = ["Basics", "Job Type", "Budget", "Images", "Date & Time", "Address", "Review"] as const;
+const stepTitles = [
+  "Start with the basics",
+  "Choose the right job type",
+  "Set a fair budget",
+  "Add photos, for better results",
+  "Choose the date & time that suits you",
+  "Tell people where it is",
+  "Review before you post",
+] as const;
 const POST_JOB_DRAFT_KEY = "gumboot-post-job-draft";
 
 type PostJobDraft = {
@@ -395,9 +607,23 @@ function ymdFromDate(d: Date) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function isoFromYMD(dateYYYYMMDD: string) {
-  if (!dateYYYYMMDD) return "";
-  return new Date(`${dateYYYYMMDD}T00:00:00.000Z`).toISOString();
+function mapDateType(mode: DateMode) {
+  switch (mode) {
+    case "urgent":
+      return "1";
+    case "exact":
+      return "2";
+    case "before":
+      return "3";
+    case "after":
+      return "4";
+    default:
+      return "";
+  }
+}
+
+function mapShiftTime(mode: TimeMode) {
+  return mode === "afternoon" ? "pm" : "am";
 }
 
 /** Calendar helpers (UTC-based to avoid timezone shifting) */
@@ -418,6 +644,36 @@ function prettyYMD(ymd: string) {
   const [y, m, d] = ymd.split("-").map((x) => Number(x));
   const date = new Date(Date.UTC(y, m - 1, d));
   return date.toLocaleDateString(undefined, { weekday: "short", year: "numeric", month: "short", day: "numeric" });
+}
+
+function prettyTime(value: string) {
+  if (!value) return "Pick a time";
+  const [hour, minute] = value.split(":").map((part) => Number(part));
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return value;
+  const date = new Date();
+  date.setHours(hour, minute, 0, 0);
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function getClockHandDegrees(value: string) {
+  const [rawHour, rawMinute] = value.split(":").map((part) => Number(part));
+  if (Number.isNaN(rawHour) || Number.isNaN(rawMinute)) {
+    return { hourDeg: 0, minuteDeg: 0 };
+  }
+  const minuteDeg = rawMinute * 6;
+  const hourDeg = (rawHour % 12) * 30 + rawMinute * 0.5;
+  return { hourDeg, minuteDeg };
+}
+
+function createBackendPlaceholderImageFile() {
+  const transparentPngBase64 =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9pX6lz4AAAAASUVORK5CYII=";
+  const binary = atob(transparentPngBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new File([bytes], "job-image-placeholder.png", { type: "image/png" });
 }
 
 /** Like MapJobs: make relative paths work by prefixing API origin (no /api) */
@@ -460,6 +716,8 @@ function resolveJobTypeImage(t: JobTypeOption, apiOrigin: string) {
 export default function PostJobPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user: meUser, loading: meLoading } = useMe();
+  const me = (meUser ?? null) as MeUser | null;
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
   const mapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
@@ -482,6 +740,7 @@ export default function PostJobPage() {
   const [description, setDescription] = useState("");
   const [jobTypeId, setJobTypeId] = useState("");
   const [budget, setBudget] = useState("");
+  const [budgetInfoOpen, setBudgetInfoOpen] = useState(false);
 
   const [files, setFiles] = useState<File[]>([]);
   const [filePreviews, setFilePreviews] = useState<Array<{ url: string; name: string }>>([]);
@@ -499,6 +758,7 @@ export default function PostJobPage() {
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
+  const exactTimeInputRef = useRef<HTMLInputElement | null>(null);
   const resumeSubmitRef = useRef(false);
   const resumeRequested = searchParams.get("resume") === "1";
   const resumePath = "/jobs/post?resume=1";
@@ -628,7 +888,7 @@ export default function PostJobPage() {
   // Google Places autocomplete
   useEffect(() => {
     if (!mapsKey) return;
-    if (step !== 4) return;
+    if (step !== 5) return;
     if (!addressInputRef.current) return;
 
     let cancelled = false;
@@ -699,13 +959,15 @@ export default function PostJobPage() {
     const found = (jobTypes as JobTypeOption[]).find((t) => String(t.id ?? t._id) === String(jobTypeId));
     return found?.name || "";
   }, [jobTypeId, jobTypes]);
+  const clockHandDegrees = useMemo(() => getClockHandDegrees(exactTime), [exactTime]);
 
   function canProceed() {
     if (step === 0) return title.trim().length >= 3 && description.trim().length >= 10;
-    if (step === 1) return Boolean(jobTypeId) && Number(budget) > 0;
-    if (step === 2) return true;
-    if (step === 3) return Boolean(jobDate) && (timeMode !== "exact-time" || Boolean(exactTime));
-    if (step === 4) return Boolean(addressLine.trim()) && lat != null && lng != null;
+    if (step === 1) return Boolean(jobTypeId);
+    if (step === 2) return Number(budget) > 0;
+    if (step === 3) return true;
+    if (step === 4) return Boolean(jobDate) && (timeMode !== "exact-time" || Boolean(exactTime));
+    if (step === 5) return Boolean(addressLine.trim()) && lat != null && lng != null;
     return true;
   }
 
@@ -799,17 +1061,45 @@ export default function PostJobPage() {
       if (!addressId) throw new Error("add_address succeeded but no addressId returned");
 
       // 2) create job
+      if (meLoading) {
+        throw new Error("Your account is still loading. Please wait a moment and try posting again.");
+      }
+
+      if (!me?._id) {
+        throw new Error("We could not resolve the signed-in account for this job post. Please refresh and try again.");
+      }
+
+      const payload = {
+        job_title: title.trim(),
+        job_type: String(jobTypeId),
+        address: String(addressId),
+        price: String(Number(budget)),
+        description: description.trim(),
+        exp_date: jobDate,
+        est_time: timeMode === "exact-time" ? exactTime : timeMode,
+        latitude: String(lat),
+        longitude: String(lng),
+        tools_required: false,
+        isUrgent: dateMode === "urgent" ? "1" : "0",
+        date: jobDate,
+        date_type: mapDateType(dateMode),
+        shift_time: mapShiftTime(timeMode),
+        price_assured: "0",
+        userId: me._id,
+      } as Record<string, string>;
+
+      if (timeMode === "exact-time" && exactTime) {
+        payload.exact_time = exactTime;
+      }
+
+      console.debug("[post-job] add_job payload", payload);
+
       const fd = new FormData();
-      fd.append("job_title", title.trim());
-      fd.append("job_type", String(jobTypeId));
-      fd.append("description", description.trim());
-      fd.append("price", String(Number(budget)));
-      fd.append("exp_date", isoFromYMD(jobDate));
-      fd.append("est_time", timeMode === "exact-time" ? exactTime : timeMode);
-      fd.append("address", String(addressId));
-      fd.append("latitude", String(lat));
-      fd.append("longitude", String(lng));
-      for (const f of files) fd.append("image", f);
+      Object.entries(payload).forEach(([key, value]) => {
+        fd.append(key, value);
+      });
+      const filesToSubmit = files.length > 0 ? files : [createBackendPlaceholderImageFile()];
+      for (const f of filesToSubmit) fd.append("image", f);
 
       const jobRes = await fetch(`${API_BASE}/add_job`, {
         method: "POST",
@@ -825,6 +1115,8 @@ export default function PostJobPage() {
       } catch {
         jobJson = { message: jobText };
       }
+
+      console.debug("[post-job] add_job response", jobJson?.body ?? jobJson?.data ?? jobJson);
 
       if (!jobRes.ok) throw new Error(jobJson?.message || jobJson?.error || `add_job failed (${jobRes.status})`);
 
@@ -847,6 +1139,8 @@ export default function PostJobPage() {
     jobTypeId,
     lat,
     lng,
+    meLoading,
+    me?._id,
     refreshSavedCardState,
     resumePath,
     router,
@@ -909,7 +1203,7 @@ export default function PostJobPage() {
           <p className="pj-step">
             Step {step + 1} of {steps.length} • {steps[step]}
           </p>
-          <h1 className="pj-title">Post a job</h1>
+          <h1 className="pj-title">{stepTitles[step]}</h1>
 
           {step === steps.length - 1 && !readToken() && (
             <div className="pj-banner">
@@ -955,7 +1249,7 @@ export default function PostJobPage() {
             </div>
           )}
 
-          {/* Step 2: Job Type & Budget */}
+          {/* Step 2: Job Type */}
           {step === 1 && (
             <div className="pj-grid">
               <div className="pj-field">
@@ -1017,9 +1311,28 @@ export default function PostJobPage() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
 
+          {/* Step 3: Budget */}
+          {step === 2 && (
+            <div className="pj-grid">
               <div className="pj-field" style={{ marginTop: 6 }}>
-                <label className="pj-label">Budget (single price)</label>
+                <label className="pj-label">
+                  <span className="pj-inline-label">
+                    <span>Budget (single price)</span>
+                    <button
+                      type="button"
+                      className="pj-info-btn"
+                      aria-label="Budget information"
+                      aria-haspopup="dialog"
+                      aria-expanded={budgetInfoOpen}
+                      onClick={() => setBudgetInfoOpen(true)}
+                    >
+                      i
+                    </button>
+                  </span>
+                </label>
                 <input
                   className="pj-input"
                   inputMode="decimal"
@@ -1040,8 +1353,8 @@ export default function PostJobPage() {
             </div>
           )}
 
-          {/* Step 3: Images */}
-          {step === 2 && (
+          {/* Step 4: Images */}
+          {step === 3 && (
             <div className="pj-grid">
               <div className="pj-field">
                 <label className="pj-label">Add images</label>
@@ -1073,8 +1386,8 @@ export default function PostJobPage() {
             </div>
           )}
 
-          {/* Step 4: Date & Time */}
-          {step === 3 && (
+          {/* Step 5: Date & Time */}
+          {step === 4 && (
             <div className="pj-grid">
               <div className="pj-field">
                 <label className="pj-label">Expiry date</label>
@@ -1196,8 +1509,67 @@ export default function PostJobPage() {
               {timeMode === "exact-time" && (
                 <div className="pj-field">
                   <label className="pj-label">Exact time</label>
+                  <div className="pj-time-picker">
+                    <div className="pj-time-picker-clock" aria-hidden="true">
+                      {[0, 1, 2, 3].map((marker) => (
+                        <span
+                          key={marker}
+                          className="pj-time-marker"
+                          style={{ transform: `rotate(${marker * 90}deg)` }}
+                        />
+                      ))}
+                      <span
+                        className="pj-time-hand hour"
+                        style={{ transform: `rotate(${clockHandDegrees.hourDeg}deg)` }}
+                      />
+                      <span
+                        className="pj-time-hand minute"
+                        style={{ transform: `rotate(${clockHandDegrees.minuteDeg}deg)` }}
+                      />
+                      <span className="pj-time-hand-pin" />
+                    </div>
+                    <div className="pj-time-picker-copy">
+                      <span className="pj-time-picker-label">Selected time</span>
+                      <span className="pj-time-picker-value">{prettyTime(exactTime)}</span>
+                      <span className="pj-time-picker-subcopy">
+                        Choose the exact arrival time and we&apos;ll save it with the job details.
+                      </span>
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        className="pj-time-picker-btn"
+                        onClick={() => {
+                          const input = exactTimeInputRef.current;
+                          if (!input) return;
+                          input.focus();
+                          if ("showPicker" in input) {
+                            try {
+                              (input as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+                              return;
+                            } catch {
+                              // Fall back to native focus/click below.
+                            }
+                          }
+                          input.click();
+                        }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path
+                            d="M7 3.75V6m10-2.25V6M4.75 9.25h14.5M6.8 20.25h10.4c1.15 0 2.05-.92 2.05-2.05V7.8c0-1.13-.9-2.05-2.05-2.05H6.8c-1.13 0-2.05.92-2.05 2.05v10.4c0 1.13.92 2.05 2.05 2.05Z"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                        <span>Select time</span>
+                      </button>
+                    </div>
+                  </div>
                   <input
-                    className="pj-input"
+                    ref={exactTimeInputRef}
+                    className="pj-input time-hidden"
                     type="time"
                     value={exactTime}
                     onChange={(e) => setExactTime(e.target.value)}
@@ -1207,11 +1579,11 @@ export default function PostJobPage() {
             </div>
           )}
 
-          {/* Step 5: Address */}
-          {step === 4 && (
+          {/* Step 6: Address */}
+          {step === 5 && (
             <div className="pj-grid">
               <div className="pj-field">
-                <label className="pj-label">Address (Google autocomplete)</label>
+                <label className="pj-label">Address - will be kept hidden untill worker has been selected.</label>
                 <input
                   ref={addressInputRef}
                   className="pj-input"
@@ -1232,8 +1604,8 @@ export default function PostJobPage() {
             </div>
           )}
 
-          {/* Step 6: Review */}
-          {step === 5 && (
+          {/* Step 7: Review */}
+          {step === 6 && (
             <div className="pj-grid">
               <p className="pj-note">Review before posting:</p>
 
@@ -1305,6 +1677,36 @@ export default function PostJobPage() {
           </div>
         </section>
       </div>
+
+      {budgetInfoOpen && (
+        <div
+          className="pj-modal-backdrop"
+          role="presentation"
+          onClick={() => setBudgetInfoOpen(false)}
+        >
+          <div
+            className="pj-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="budget-info-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="pj-modal-title" id="budget-info-title">Budget info</h2>
+            <p className="pj-modal-copy">
+              State your Budget for the job, People will send you offers of what they are willing to do it for, so put what you think is fair
+            </p>
+            <div className="pj-modal-actions">
+              <button
+                type="button"
+                className="pj-btn primary"
+                onClick={() => setBudgetInfoOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -226,10 +226,43 @@ const styles = `
   }
 
   @media (max-width: 760px){
-    .shell-left{ width: 100%; position:absolute; inset: calc(18px + 52px) 10px 10px 10px; z-index:25; }
+    .shell-body{
+      padding: 8px;
+      gap: 8px;
+    }
+    .shell-left{ width: 100%; position:absolute; inset: calc(10px + 52px) 8px 8px 8px; z-index:25; }
     .shell-left.collapsed{ width:100%; transform: translateX(-10px); opacity:0; }
-    .shell-utility{ left:10px; top:10px; }
-    .shell-filter-panel{ width: min(300px, calc(100vw - 28px)); }
+    .shell-utility{
+      left:8px;
+      right:8px;
+      top:8px;
+      gap:8px;
+      justify-content:space-between;
+      padding:6px;
+    }
+    .shell-icon-btn{
+      flex:1;
+      justify-content:center;
+      min-height:40px;
+      padding:10px 12px;
+    }
+    .shell-filter-wrap{
+      position: static;
+      flex: 1;
+      display: flex;
+    }
+    .shell-filter-panel{
+      position: fixed;
+      top: 64px;
+      left: 12px;
+      right: 12px;
+      width: auto;
+      max-height: calc(100dvh - 88px);
+      overflow-y: auto;
+    }
+    .shell-center-inner{
+      padding:8px;
+    }
   }
 `;
 
@@ -270,6 +303,15 @@ export function Shell({
   const filtersId = useId();
 
   const jobTypeOptions = useMemo(() => Array.from(new Set(jobTypes)).filter(Boolean), [jobTypes]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 760px)");
+    const sync = () => setShowLeft(!media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
 
   useEffect(() => {
     if (!showFilters) return;

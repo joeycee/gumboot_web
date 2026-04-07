@@ -21,8 +21,8 @@ export type PublicProfileUser = {
 };
 
 export type PublicProfileRating = {
-  count?: number;
-  averageRating?: number;
+  count?: string | number;
+  averageRating?: string | number;
 };
 
 export type PublicProfileReview = {
@@ -94,6 +94,13 @@ export type WorkerCompletedJobsBody = {
   totalPages?: number;
 };
 
+export type ResolvedPublicProfile = {
+  source: "worker" | "user";
+  body: WorkerPublicProfileBody | EmployerPublicProfileBody;
+  user: PublicProfileUser | null;
+  canSaveReconnect: boolean;
+};
+
 type PublicProfileHrefOptions = {
   userId?: string | null;
   kind?: PublicProfileKind | null;
@@ -110,11 +117,10 @@ function withQuery(path: string, params: Record<string, string | number | null |
   return queryString ? `${path}?${queryString}` : path;
 }
 
-export function buildPublicProfileHref({ userId, kind, jobId }: PublicProfileHrefOptions) {
+export function buildPublicProfileHref({ userId, jobId }: PublicProfileHrefOptions) {
   if (!userId) return "#";
 
   const search = new URLSearchParams();
-  if (kind) search.set("kind", kind);
   if (jobId) search.set("jobId", jobId);
 
   const queryString = search.toString();
@@ -136,11 +142,33 @@ export async function fetchEmployerPublicProfile(userId: string) {
   );
 }
 
-export async function fetchPublicReviews(userId: string) {
+export async function fetchPublicProfile(userId: string, jobId = ""): Promise<ResolvedPublicProfile> {
+  try {
+    const response = await fetchEmployerPublicProfile(userId);
+    return {
+      source: "user",
+      body: response.body ?? {},
+      user: response.body?.workerDetails ?? response.body?.userDetail ?? null,
+      canSaveReconnect: false,
+    };
+  } catch {
+    const response = await fetchWorkerPublicProfile(userId, jobId);
+    return {
+      source: "worker",
+      body: response.body ?? {},
+      user: response.body?.workerDetails ?? response.body?.userDetail ?? null,
+      canSaveReconnect: true,
+    };
+  }
+}
+
+export async function fetchPublicReviews(userId: string, perPage = 50) {
   return api<ApiEnvelope<ReviewsBody>>(
     withQuery("/review_listing", {
       userId,
       type: "1",
+      page: 1,
+      perPage,
     })
   );
 }
