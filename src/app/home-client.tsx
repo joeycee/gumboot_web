@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Shell } from "@/components/Shell";
 import { MapJobs } from "@/components/MapJobs";
-import { JobDetailsDrawer } from "@/components/JobDetailsDrawer";
 import { api } from "@/lib/api";
 import { Job, normalizeJobs } from "@/lib/jobs";
 import { useMe } from "@/lib/useMe";
@@ -330,59 +329,156 @@ const styles = `
 
   /* ── List view ── */
   .list-view-root {
-    padding: 28px;
-    min-height: 100%;
+    height: 100%;
+    min-height: 0;
     width: 100%;
     background: transparent;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .list-view-header {
+    flex-shrink: 0;
+    padding: 28px 28px 18px;
   }
   .list-view-heading {
     font-family: 'DM Serif Display', serif;
     font-size: 26px;
     font-weight: 400;
     color: #E5E5E5;
-    margin: 0 0 24px;
+    margin: 0;
+  }
+  .list-view-subtitle {
+    margin: 8px 0 0;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(229,229,229,0.42);
+  }
+  .list-view-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 28px 28px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(229,229,229,0.14) transparent;
+  }
+  .list-view-scroll::-webkit-scrollbar { width: 6px; }
+  .list-view-scroll::-webkit-scrollbar-track { background: transparent; }
+  .list-view-scroll::-webkit-scrollbar-thumb {
+    background: rgba(229,229,229,0.14);
+    border-radius: 999px;
   }
   .list-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 12px;
+    align-content: start;
   }
   .list-card {
     border: 1px solid rgba(229,229,229,0.10);
-    border-radius: 14px;
-    padding: 18px;
+    border-radius: 18px;
+    padding: 14px;
     cursor: pointer;
     transition: all 0.15s;
-    background: rgba(62,74,81,0.50);
+    background:
+      linear-gradient(180deg, rgba(78,91,99,0.18), rgba(48,58,64,0.38)),
+      rgba(62,74,81,0.50);
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr);
+    gap: 14px;
+    align-items: center;
+    min-height: 112px;
+    overflow: hidden;
   }
   .list-card:hover {
-    background: rgba(62,74,81,0.80);
+    background:
+      linear-gradient(180deg, rgba(92,108,117,0.26), rgba(54,66,73,0.52)),
+      rgba(62,74,81,0.80);
     border-color: rgba(229,229,229,0.18);
     transform: translateY(-2px);
     box-shadow: 0 8px 24px rgba(0,0,0,0.25);
   }
+  .list-card-media {
+    position: relative;
+    width: 84px;
+    aspect-ratio: 1;
+    border-radius: 20px;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at top left, rgba(38,166,154,0.34), rgba(0,0,0,0) 65%),
+      linear-gradient(145deg, rgba(229,229,229,0.10), rgba(229,229,229,0.03));
+    border: 1px solid rgba(229,229,229,0.12);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+  .list-card-media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .list-card-media::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: 48%;
+    background: linear-gradient(180deg, rgba(0,0,0,0), rgba(12,17,20,0.42));
+    pointer-events: none;
+  }
+  .list-card-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
   .list-card-title {
     font-size: 14px;
-    font-weight: 500;
-    color: rgba(229,229,229,0.88);
-    margin-bottom: 5px;
-    white-space: nowrap;
+    line-height: 1.35;
+    font-weight: 600;
+    color: rgba(229,229,229,0.92);
+    margin-bottom: 6px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
   }
   .list-card-type {
     font-size: 10px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: rgba(229,229,229,0.28);
-    margin-bottom: 12px;
+    color: rgba(229,229,229,0.36);
+    margin-bottom: 8px;
   }
-  .list-card-price { font-size: 15px; font-weight: 600; color: #26A69A; }
+  .list-card-location {
+    font-size: 12px;
+    color: rgba(229,229,229,0.58);
+    margin-bottom: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .list-card-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .list-card-price {
+    font-size: 15px;
+    font-weight: 600;
+    color: #26A69A;
+  }
   .list-card-price.unknown {
     font-size: 12px;
     color: rgba(229,229,229,0.28);
     font-weight: 300;
     font-style: italic;
+  }
+  .list-card-open {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(229,229,229,0.42);
   }
 
   /* Skeleton */
@@ -440,19 +536,36 @@ const styles = `
       border-radius: 12px;
     }
     .list-view-root {
-      padding: 88px 14px 18px;
+      min-height: 100%;
+    }
+    .list-view-header {
+      padding: 88px 14px 16px;
     }
     .list-view-heading {
       font-size: 22px;
-      margin-bottom: 18px;
+    }
+    .list-view-subtitle {
+      font-size: 11px;
+    }
+    .list-view-scroll {
+      padding: 0 14px 18px;
     }
     .list-grid {
       grid-template-columns: 1fr;
       gap: 10px;
     }
     .list-card {
-      padding: 16px;
       border-radius: 16px;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 12px;
+      min-height: 98px;
+    }
+    .list-card-media {
+      width: 72px;
+      border-radius: 16px;
+    }
+    .list-card-location {
+      margin-bottom: 10px;
     }
     .hc-mobile-prompt-actions {
       grid-template-columns: 1fr;
@@ -549,8 +662,6 @@ export default function HomeClient() {
   useMe();
 
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [mode, setMode] = useState<ViewMode>("map");
   const [error, setError] = useState<string | null>(null);
   const [loadingJobs, setLoadingJobs] = useState(false);
@@ -641,26 +752,9 @@ export default function HomeClient() {
     };
   }, []);
 
-  const openJobDrawer = useCallback(
+  const openJobPage = useCallback(
     (job: Job) => {
-      if (isMobileViewport) {
-        router.push(`/jobs/${job.id}`);
-        return;
-      }
-      setSelectedJob(job);
-      setIsDrawerOpen(true);
-    },
-    [isMobileViewport, router]
-  );
-
-  const closeJobDrawer = useCallback(() => {
-    setIsDrawerOpen(false);
-    setSelectedJob(null);
-  }, []);
-
-  const onApply = useCallback(
-    (jobId: string) => {
-      router.push(`/jobs/${jobId}`);
+      router.push(`/jobs/${job.id}`);
     },
     [router]
   );
@@ -732,8 +826,8 @@ export default function HomeClient() {
             : filteredJobs.map((j) => (
                 <button
                   key={j.id}
-                  onClick={() => openJobDrawer(j)}
-                  className={`job-row${selectedJob?.id === j.id ? " selected" : ""}`}
+                  onClick={() => openJobPage(j)}
+                  className="job-row"
                 >
                   <div className="job-row-inner">
                     <div className="job-row-badge" aria-hidden="true">
@@ -754,7 +848,7 @@ export default function HomeClient() {
         </div>
       </div>
     ),
-    [filteredJobs, selectedJob, mode, error, loadingJobs, openJobDrawer, apiOrigin]
+    [filteredJobs, mode, error, loadingJobs, openJobPage, apiOrigin]
   );
 
   return (
@@ -833,31 +927,37 @@ export default function HomeClient() {
             }}
           >
             {mode === "map" ? (
-              <MapJobs jobs={filteredJobs} onSelect={openJobDrawer} />
+              <MapJobs jobs={filteredJobs} onSelect={openJobPage} />
             ) : (
               <div className="list-view-root">
-                <h1 className="list-view-heading">All Jobs</h1>
-                <div className="list-grid">
-                  {filteredJobs.map((j) => (
-                    <div key={j.id} className="list-card" onClick={() => openJobDrawer(j)}>
-                      <div className="list-card-title">{j.title}</div>
-                      <div className="list-card-type">{j.jobTypeName || "General"}</div>
-                      <div className={`list-card-price${j.price == null ? " unknown" : ""}`}>
-                        {j.price != null ? `$${j.price}` : "Price unknown"}
+                <div className="list-view-header">
+                  <h1 className="list-view-heading">All Jobs</h1>
+                  <p className="list-view-subtitle">{filteredJobs.length} available right now</p>
+                </div>
+                <div className="list-view-scroll">
+                  <div className="list-grid">
+                    {filteredJobs.map((j) => (
+                      <div key={j.id} className="list-card" onClick={() => openJobPage(j)}>
+                        <div className="list-card-media" aria-hidden="true">
+                          <img src={getJobTypeImageUrl(j, apiOrigin)} alt="" />
+                        </div>
+                        <div className="list-card-copy">
+                          <div className="list-card-title">{j.title}</div>
+                          <div className="list-card-type">{j.jobTypeName || "General"}</div>
+                          <div className="list-card-location">{getLocationSummary(j)}</div>
+                          <div className="list-card-meta">
+                            <div className={`list-card-price${j.price == null ? " unknown" : ""}`}>
+                              {j.price != null ? `$${j.price}` : "Price unknown"}
+                            </div>
+                            <div className="list-card-open">Open</div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
-
-            <JobDetailsDrawer
-              open={isDrawerOpen}
-              job={selectedJob}
-              apiOrigin={apiOrigin}
-              onClose={closeJobDrawer}
-              onApply={onApply}
-            />
           </Shell>
         </div>
 
