@@ -77,6 +77,30 @@ function buildAddressText(address: RecordLike | null): string | null {
   return parts.length ? parts.join(", ") : null;
 }
 
+function buildLocationSummary(address: RecordLike | null, row: RecordLike): string | null {
+  const suburb =
+    asString(address?.suburb) ??
+    asString(row.suburb) ??
+    null;
+  const city =
+    asString(address?.city) ??
+    asString(row.city) ??
+    null;
+
+  if (suburb && city) return `${suburb}, ${city}`;
+  if (suburb) return suburb;
+  if (city) return city;
+
+  const rawAddress = buildAddressText(address) ?? asString(row.address) ?? null;
+  if (!rawAddress) return null;
+  const parts = rawAddress
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length >= 2) return `${parts[1]}${parts[2] ? `, ${parts[2]}` : ""}`;
+  return parts[0] || null;
+}
+
 function parseCoordinatePair(value: unknown): { lat: number; lng: number } | null {
   if (!Array.isArray(value) || value.length < 2) return null;
   const first = asNumber(value[0]);
@@ -142,7 +166,7 @@ function normalizeJob(row: RecordLike, scope: CalendarScope): CalendarEvent {
   const statusCode = String(row.job_status ?? "0");
   const address = asRecord(row.address);
   const addressText = buildAddressText(address);
-  const locationText = addressText ?? asString(row.address) ?? null;
+  const locationText = buildLocationSummary(address, row);
 
   return {
     id,
