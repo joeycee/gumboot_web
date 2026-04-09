@@ -297,7 +297,7 @@ export default function PaymentSetupPage() {
         bankName: "",
       });
       window.setTimeout(() => {
-        router.push(isSettingsMode ? "/profile/settings?saved=1" : nextPath || "/profile");
+        router.push(isSettingsMode ? "/profile/settings?saved=1" : nextPath || "/");
       }, 500);
     } catch (nextError) {
       if (nextError instanceof ApiError && (nextError.status === 401 || nextError.status === 403)) {
@@ -311,7 +311,7 @@ export default function PaymentSetupPage() {
   }
 
   function handleSkip() {
-    router.push(isSettingsMode ? "/profile/settings" : nextPath || "/profile");
+    router.push(isSettingsMode ? "/profile/settings" : nextPath || "/");
   }
 
   return (

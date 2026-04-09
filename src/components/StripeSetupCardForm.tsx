@@ -69,7 +69,11 @@ function InnerSetupCardForm({ buttonLabel, makeDefaultOnSuccess = false, onSucce
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      <PaymentElement />
+      <PaymentElement
+        options={{
+          layout: "accordion",
+        }}
+      />
       {error ? (
         <div style={{ fontSize: 13, color: "rgba(255,220,220,0.92)", lineHeight: 1.5 }}>{error}</div>
       ) : null}

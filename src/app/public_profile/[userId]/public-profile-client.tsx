@@ -920,13 +920,7 @@ export default function PublicProfileClient({ userId }: { userId: string }) {
         const targetUserId = loadedProfile.user?._id ?? userId;
 
         const [reviewsResponse, workerProfileResponse, workerJobsResponse] = await Promise.all([
-          fetchPublicReviews(targetUserId).catch((reviewsError) => {
-            console.warn("[public-profile] review_listing request failed", {
-              userId: targetUserId,
-              error: reviewsError,
-            });
-            return null;
-          }),
+          fetchPublicReviews(targetUserId).catch(() => null),
           fetchWorkerPublicProfile(targetUserId, jobId).catch(() => null),
           loadedProfile.source === "worker"
             ? fetchWorkerCompletedJobs(targetUserId).catch(() => null)

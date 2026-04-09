@@ -75,8 +75,6 @@ export function normalizeJobs(apiBody: unknown): Job[] {
         : maybe?.body ?? maybe?.data ?? maybe?.jobs ?? apiBody ?? [];
   if (!Array.isArray(list)) return [];
 
-  let droppedForInvalidCoords = 0;
-
   const normalized = list
     .map<Job | null>((j: unknown) => {
       const row = (j ?? {}) as Record<string, unknown>;
@@ -149,23 +147,6 @@ export function normalizeJobs(apiBody: unknown): Job[] {
       const expDate = typeof row.exp_date === "string" ? row.exp_date : undefined;
 
       if (!hasValidCoordinates(lat, lng)) {
-        droppedForInvalidCoords += 1;
-        if (droppedForInvalidCoords <= 5) {
-          console.debug("[normalizeJobs] dropped invalid coords:", {
-            id: String(id ?? ""),
-            title,
-            lat1,
-            lng1,
-            lat2,
-            lng2,
-            lat3,
-            lng3,
-            lat4,
-            lng4,
-            rawLocation: row.location,
-            rawAddress: row.address,
-          });
-        }
         return null;
       }
 
@@ -195,12 +176,6 @@ export function normalizeJobs(apiBody: unknown): Job[] {
       };
     })
     .filter((j): j is Job => j !== null);
-
-  console.debug("[normalizeJobs] totals:", {
-    input: list.length,
-    output: normalized.length,
-    droppedForInvalidCoords,
-  });
 
   return normalized;
 }

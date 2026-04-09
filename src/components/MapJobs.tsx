@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useEffect, useCallback } from "react";
+import { useMemo, useCallback } from "react";
 import { APIProvider, Map, Marker, useApiIsLoaded } from "@vis.gl/react-google-maps";
 import { Job } from "@/lib/jobs";
 
@@ -184,24 +184,6 @@ export function MapJobs({
     },
     [apiOrigin]
   );
-
-  useEffect(() => {
-    const missingIconCount = markerJobs.filter((job) => !job.jobTypeIconPath).length;
-    console.debug("[MapJobs] markers:", markerJobs.length, "missing icons:", missingIconCount);
-    if (markerJobs.length > 0) {
-      console.debug(
-        "[MapJobs] sample:",
-        markerJobs.slice(0, 5).map((j) => ({
-          id: j.id,
-          title: j.title,
-          lat: j.lat,
-          lng: j.lng,
-          jobTypeIconPath: j.jobTypeIconPath,
-          resolvedIconUrl: resolveIconUrl(j.jobTypeIconPath),
-        }))
-      );
-    }
-  }, [markerJobs, resolveIconUrl]);
 
   if (!key) {
     return (

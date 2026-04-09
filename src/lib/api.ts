@@ -2,14 +2,6 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL!;
 const AUTH_TOKEN_KEY = "gumboot_token";
 const FALLBACK_AUTH_TOKEN_KEY = "token";
 export const AUTH_CHANGED_EVENT = "gumboot-auth-changed";
-const APP_SECRET_KEY =
-  process.env.NEXT_PUBLIC_API_SECRET_KEY ??
-  process.env.SECRETKEY ??
-  "";
-const APP_PUBLISH_KEY =
-  process.env.NEXT_PUBLIC_API_PUBLISH_KEY ??
-  process.env.PUBLISHABLEKEY ??
-  "";
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -63,7 +55,6 @@ export async function api<T>(
     body?: unknown;
     headers?: Record<string, string>;
     auth?: boolean;
-    includeAppKeys?: boolean;
   } = {}
 ): Promise<T> {
   const token = readAuthToken();
@@ -74,8 +65,6 @@ export async function api<T>(
     method: opts.method ?? "GET",
     headers: {
       ...(opts.body ? { "Content-Type": "application/json" } : {}),
-      ...(opts.includeAppKeys && APP_SECRET_KEY ? { secret_key: APP_SECRET_KEY } : {}),
-      ...(opts.includeAppKeys && APP_PUBLISH_KEY ? { publish_key: APP_PUBLISH_KEY } : {}),
       ...(shouldAttachAuth && token && !hasAuthHeader ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts.headers ?? {}),
     },
@@ -106,7 +95,6 @@ export async function apiForm<T>(
     method?: Exclude<Method, "GET">;
     headers?: Record<string, string>;
     auth?: boolean;
-    includeAppKeys?: boolean;
   } = {}
 ): Promise<T> {
   const token = readAuthToken();
@@ -116,8 +104,6 @@ export async function apiForm<T>(
   const res = await fetch(`${API_BASE}${path}`, {
     method: opts.method ?? "POST",
     headers: {
-      ...(opts.includeAppKeys && APP_SECRET_KEY ? { secret_key: APP_SECRET_KEY } : {}),
-      ...(opts.includeAppKeys && APP_PUBLISH_KEY ? { publish_key: APP_PUBLISH_KEY } : {}),
       ...(shouldAttachAuth && token && !hasAuthHeader ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts.headers ?? {}),
     },

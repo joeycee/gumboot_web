@@ -555,6 +555,7 @@ const stepTitles = [
   "Review before you post",
 ] as const;
 const POST_JOB_DRAFT_KEY = "gumboot-post-job-draft";
+const POST_JOB_DRAFT_IMAGES_KEY = "gumboot-post-job-draft-images";
 
 type PostJobDraft = {
   step?: number;
@@ -571,6 +572,13 @@ type PostJobDraft = {
   lng?: number | null;
   pendingSubmit?: boolean;
   hadImages?: boolean;
+};
+
+type CachedDraftImage = {
+  name: string;
+  type: string;
+  lastModified: number;
+  dataUrl: string;
 };
 
 function readToken() {
@@ -598,6 +606,74 @@ function writePostJobDraft(draft: PostJobDraft) {
 function clearPostJobDraft() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(POST_JOB_DRAFT_KEY);
+  window.sessionStorage.removeItem(POST_JOB_DRAFT_IMAGES_KEY);
+}
+
+function readCachedPostJobImages(): CachedDraftImage[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.sessionStorage.getItem(POST_JOB_DRAFT_IMAGES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as CachedDraftImage[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.dataUrl && item?.name) : [];
+  } catch {
+    return [];
+  }
+}
+
+function blobFromDataUrl(dataUrl: string) {
+  const [prefix, content = ""] = dataUrl.split(",", 2);
+  const mimeMatch = prefix.match(/data:(.*?);base64/i);
+  const mime = mimeMatch?.[1] || "application/octet-stream";
+  const binary = atob(content);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mime });
+}
+
+function restoreCachedPostJobImages() {
+  return readCachedPostJobImages().map(
+    (image, index) =>
+      new File([blobFromDataUrl(image.dataUrl)], image.name || `job-image-${index + 1}.png`, {
+        type: image.type || "image/png",
+        lastModified: image.lastModified || Date.now(),
+      })
+  );
+}
+
+async function cachePostJobImages(files: File[]) {
+  if (typeof window === "undefined") return;
+  if (!files.length) {
+    window.sessionStorage.removeItem(POST_JOB_DRAFT_IMAGES_KEY);
+    return;
+  }
+
+  const encoded = await Promise.all(
+    files.map(
+      (file) =>
+        new Promise<CachedDraftImage>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result !== "string") {
+              reject(new Error("Unable to cache image."));
+              return;
+            }
+            resolve({
+              name: file.name,
+              type: file.type,
+              lastModified: file.lastModified,
+              dataUrl: reader.result,
+            });
+          };
+          reader.onerror = () => reject(new Error("Unable to cache image."));
+          reader.readAsDataURL(file);
+        })
+    )
+  );
+
+  window.sessionStorage.setItem(POST_JOB_DRAFT_IMAGES_KEY, JSON.stringify(encoded));
 }
 
 function ymdFromDate(d: Date) {
@@ -765,6 +841,7 @@ export default function PostJobPage() {
 
   useEffect(() => {
     const draft = readPostJobDraft();
+    const restoredImages = restoreCachedPostJobImages();
     if (draft) {
       setStep(
         Math.min(
@@ -784,9 +861,11 @@ export default function PostJobPage() {
       setLat(typeof draft.lat === "number" ? draft.lat : null);
       setLng(typeof draft.lng === "number" ? draft.lng : null);
       setPendingResumeSubmit(Boolean(draft.pendingSubmit));
-      setRestoredDraftHadImages(Boolean(draft.hadImages));
-      if (resumeRequested && draft.hadImages) {
-        setError("Your draft was restored. Please re-add any images before posting.");
+      setRestoredDraftHadImages(Boolean(draft.hadImages && restoredImages.length === 0));
+      if (restoredImages.length > 0) {
+        setFiles(restoredImages);
+      } else if (resumeRequested && draft.hadImages) {
+        setError("Your draft was restored, but your cached images were not available. Please re-add them before posting.");
       }
     } else if (resumeRequested) {
       setStep(steps.length - 1);
@@ -875,6 +954,11 @@ export default function PostJobPage() {
     timeMode,
     title,
   ]);
+
+  useEffect(() => {
+    if (!draftHydrated) return;
+    void cachePostJobImages(files);
+  }, [draftHydrated, files]);
 
   // Generate image previews whenever files change
   useEffect(() => {
@@ -986,6 +1070,7 @@ export default function PostJobPage() {
       const token = readToken();
       if (!token) {
         setPendingResumeSubmit(true);
+        await cachePostJobImages(files);
         writePostJobDraft({
           step: steps.length - 1,
           title,
@@ -1011,6 +1096,7 @@ export default function PostJobPage() {
       const canPostWithCard = await refreshSavedCardState();
       if (!canPostWithCard) {
         setPendingResumeSubmit(true);
+        await cachePostJobImages(files);
         writePostJobDraft({
           step: steps.length - 1,
           title,
@@ -1108,8 +1194,6 @@ export default function PostJobPage() {
         payload.exact_time = exactTime;
       }
 
-      console.debug("[post-job] add_job payload", payload);
-
       const fd = new FormData();
       Object.entries(payload).forEach(([key, value]) => {
         fd.append(key, String(value));
@@ -1131,8 +1215,6 @@ export default function PostJobPage() {
       } catch {
         jobJson = { message: jobText };
       }
-
-      console.debug("[post-job] add_job response", jobJson?.body ?? jobJson?.data ?? jobJson);
 
       const jobErrorMessage =
         typeof jobJson.message === "string" && jobJson.message.trim()

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getApiBaseUrl, getApiOrigin } from "@/lib/api";
+import { useLocalDevOtpBypassEnabled } from "@/lib/useLocalDevOtpBypass";
 
 const PROFILE_ENDPOINT = `${getApiBaseUrl()}/profile`;
 const API_BASE = getApiOrigin();
@@ -44,11 +45,8 @@ function getAuthToken() {
   return null;
 }
 
-function isDevLocalSession(token: string | null) {
-  const inDevMode =
-    process.env.NEXT_PUBLIC_TWILIO_MODE === "development" ||
-    process.env.TWILIO_MODE === "development";
-  return inDevMode && token === "dev-local-token";
+function isDevLocalSession(token: string | null, devBypassEnabled: boolean) {
+  return devBypassEnabled && token === "dev-local-token";
 }
 
 function readDevProfileBody(): ProfileResponse["body"] {
@@ -462,6 +460,7 @@ function RatingStars({ value }: { value: number }) {
 
 export default function ProfilePage() {
   const router = useRouter();
+  const devBypassEnabled = useLocalDevOtpBypassEnabled();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ProfileResponse["body"] | null>(null);
@@ -481,7 +480,7 @@ export default function ProfilePage() {
 
       const token = getAuthToken();
 
-      if (isDevLocalSession(token)) {
+    if (isDevLocalSession(token, devBypassEnabled)) {
         setData(readDevProfileBody());
         return;
       }
@@ -522,7 +521,7 @@ export default function ProfilePage() {
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [devBypassEnabled, router]);
 
   useEffect(() => {
     fetchProfile();

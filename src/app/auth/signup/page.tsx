@@ -4,6 +4,11 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signup } from "@/lib/auth";
+import {
+  normalizeCountryCode,
+  normalizePhoneNumber,
+} from "@/lib/otp";
+import { useLocalDevOtpBypassEnabled } from "@/lib/useLocalDevOtpBypass";
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap');
@@ -361,9 +366,7 @@ export default function SignupPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = searchParams.get("next");
-  const twilioMode =
-    process.env.NEXT_PUBLIC_TWILIO_MODE ?? process.env.TWILIO_MODE;
-  const isTwilioDevMode = twilioMode === "development";
+  const isTwilioDevMode = useLocalDevOtpBypassEnabled();
   const [form, setForm] = useState({
     firstname: "",
     lastname: "",
@@ -379,13 +382,21 @@ export default function SignupPage() {
     try {
       setLoading(true);
       setError(null);
+      const payload = {
+        ...form,
+        country_code: normalizeCountryCode(form.country_code),
+        phone: normalizePhoneNumber(form.phone),
+      };
+      if (!payload.country_code || !payload.phone) {
+        throw new Error("Enter a valid country code and mobile number.");
+      }
       if (isTwilioDevMode) {
         router.push(
-          `/auth/verify-otp?flow=signup&next=${encodeURIComponent(`/auth/signup/profile-setup${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`)}&phone=${encodeURIComponent(form.phone)}&country_code=${encodeURIComponent(form.country_code)}&dev_otp=123456`
+          `/auth/verify-otp?flow=signup&next=${encodeURIComponent(`/auth/signup/profile-setup${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`)}&phone=${encodeURIComponent(payload.phone)}&country_code=${encodeURIComponent(payload.country_code)}&dev_otp=123456`
         );
         return;
       }
-      const res = await signup(form);
+      const res = await signup(payload);
       const devOtp = "";
       const serviceSid =
         res?.body?.serviceSid ??
@@ -396,7 +407,7 @@ export default function SignupPage() {
       }
       const devOtpQuery = devOtp ? `&dev_otp=${encodeURIComponent(devOtp)}` : "";
       router.push(
-        `/auth/verify-otp?flow=signup&next=${encodeURIComponent(`/auth/signup/profile-setup${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`)}&phone=${encodeURIComponent(form.phone)}&country_code=${encodeURIComponent(form.country_code)}&service_sid=${encodeURIComponent(serviceSid)}${devOtpQuery}`
+        `/auth/verify-otp?flow=signup&next=${encodeURIComponent(`/auth/signup/profile-setup${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`)}&phone=${encodeURIComponent(payload.phone)}&country_code=${encodeURIComponent(payload.country_code)}&service_sid=${encodeURIComponent(serviceSid)}${devOtpQuery}`
       );
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Signup failed";
@@ -493,7 +504,12 @@ export default function SignupPage() {
                   <input
                     className="sp-input sp-input-cc"
                     value={form.country_code}
-                    onChange={(e) => setForm({ ...form, country_code: e.target.value })}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        country_code: normalizeCountryCode(e.target.value),
+                      })
+                    }
                     inputMode="tel"
                     aria-label="Country code"
                   />
@@ -501,7 +517,12 @@ export default function SignupPage() {
                     className="sp-input"
                     placeholder="021 234 5678"
                     value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        phone: e.target.value,
+                      })
+                    }
                     inputMode="tel"
                     required
                     aria-label="Phone number"

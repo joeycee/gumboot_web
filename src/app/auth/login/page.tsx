@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { sendLoginOtp } from "@/lib/auth";
+import { normalizeCountryCode, normalizePhoneNumber } from "@/lib/otp";
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap');
@@ -316,8 +317,15 @@ export default function LoginPage() {
     try {
       setLoading(true);
       setError(null);
-      const res = await sendLoginOtp({ country_code: countryCode, phone });
-      console.log("[login] sendLoginOtp response:", res);
+      const normalizedCountryCode = normalizeCountryCode(countryCode);
+      const normalizedPhone = normalizePhoneNumber(phone);
+      if (!normalizedCountryCode || !normalizedPhone) {
+        throw new Error("Enter a valid country code and mobile number.");
+      }
+      const res = await sendLoginOtp({
+        country_code: normalizedCountryCode,
+        phone: normalizedPhone,
+      });
       const serviceSid =
         res?.body?.serviceSid ??
         res?.body?.service_sid ??
@@ -327,7 +335,7 @@ export default function LoginPage() {
         : "";
       const nextQuery = nextPath ? `&next=${encodeURIComponent(nextPath)}` : "";
       router.push(
-        `/auth/verify-otp?phone=${encodeURIComponent(phone)}&country_code=${encodeURIComponent(countryCode)}${serviceSidQuery}${nextQuery}`
+        `/auth/verify-otp?phone=${encodeURIComponent(normalizedPhone)}&country_code=${encodeURIComponent(normalizedCountryCode)}${serviceSidQuery}${nextQuery}`
       );
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Failed to send OTP";
@@ -389,7 +397,7 @@ export default function LoginPage() {
                 <input
                   className="lp-input lp-input-cc"
                   value={countryCode}
-                  onChange={(e) => setCountryCode(e.target.value)}
+                  onChange={(e) => setCountryCode(normalizeCountryCode(e.target.value))}
                   inputMode="tel"
                   aria-label="Country code"
                 />

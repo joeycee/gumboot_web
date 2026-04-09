@@ -546,9 +546,6 @@ export default function OfferReviewClient({ jobId, requestId }: { jobId: string;
       const workerProfileResponse = workerId
         ? await fetchWorkerPublicProfile(workerId, requestId)
         : null;
-      if (workerProfileResponse) {
-        console.debug("[offer-review] worker_public_profile response", workerProfileResponse);
-      }
 
       setJob(nextJob);
       setOffers(applications);

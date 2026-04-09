@@ -5,6 +5,12 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { me, otpVerify, resendSignupOtp, sendLoginOtp } from "@/lib/auth";
 import { clearAuthToken, setAuthToken } from "@/lib/api";
+import {
+  isTwilioDevModeConfigured,
+  normalizeCountryCode,
+  normalizePhoneNumber,
+} from "@/lib/otp";
+import { useLocalDevOtpBypassEnabled } from "@/lib/useLocalDevOtpBypass";
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap');
@@ -301,18 +307,18 @@ export default function VerifyOtpPage() {
   const params = useSearchParams();
   const router = useRouter();
 
-  const phone = params.get("phone") ?? "";
-  const countryCode = params.get("country_code") ?? "+64";
+  const phone = normalizePhoneNumber(params.get("phone") ?? "");
+  const countryCode = normalizeCountryCode(params.get("country_code") ?? "+64");
   const serviceSid =
     params.get("service_sid") ??
     process.env.NEXT_PUBLIC_TWILIO_VERIFY_SERVICE_SID ??
     "";
   const flow = params.get("flow") ?? "login";
   const nextPath = params.get("next");
-  const twilioMode =
-    process.env.NEXT_PUBLIC_TWILIO_MODE ?? process.env.TWILIO_MODE;
-  const isTwilioDevMode = twilioMode === "development";
-  const devOtp = params.get("dev_otp") ?? (isTwilioDevMode ? "123456" : "");
+  const isTwilioDevMode = useLocalDevOtpBypassEnabled();
+  const devOtp = isTwilioDevMode
+    ? params.get("dev_otp") ?? "123456"
+    : "";
 
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
@@ -354,7 +360,6 @@ export default function VerifyOtpPage() {
         service_sid: serviceSid || undefined,
         service_id: serviceSid || undefined,
       });
-      console.log("[auth] otpVerify response:", res);
       const token = res?.body?.userDetail?.token ?? res?.body?.token;
       if (!token) {
         clearAuthToken();
@@ -362,11 +367,8 @@ export default function VerifyOtpPage() {
       }
       setAuthToken(token);
       try {
-        const profileRes = await me();
-        console.log("[auth] profile response after verify:", profileRes);
-      } catch (profileError) {
-        console.warn("[auth] profile fetch after verify failed:", profileError);
-      }
+        await me();
+      } catch {}
       router.push(
         flow === "signup"
           ? nextPath
@@ -435,8 +437,8 @@ export default function VerifyOtpPage() {
           {/* ── Form ── */}
           <section className="vop-form-panel">
             <h2 className="vop-form-title">Enter code</h2>
-            <p className="vop-form-sub">
-              {flow === "signup" && devOtp
+              <p className="vop-form-sub">
+              {flow === "signup" && devOtp && isTwilioDevMode && isTwilioDevModeConfigured()
                 ? `Development mode: use code ${devOtp}`
                 : "Use the 6-digit code from your SMS."}
             </p>

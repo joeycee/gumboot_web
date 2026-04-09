@@ -14,6 +14,7 @@ type MobileDeviceKind = "ios" | "android" | "other";
 const MOBILE_APP_PROMPT_STORAGE_KEY = "gumboot_mobile_app_prompt_dismissed";
 const MOBILE_DEVICE_STORAGE_KEY = "gumboot_mobile_device_info";
 const MOBILE_APP_PROMPT_ENABLED = process.env.NEXT_PUBLIC_ENABLE_MOBILE_APP_PROMPT === "true";
+const FORCE_MOBILE_APP_PROMPT = process.env.NEXT_PUBLIC_FORCE_MOBILE_APP_PROMPT === "true";
 const MOBILE_APP_URL = process.env.NEXT_PUBLIC_GUMBOOT_APP_URL ?? "";
 const IOS_APP_URL = process.env.NEXT_PUBLIC_GUMBOOT_IOS_APP_URL ?? MOBILE_APP_URL;
 const ANDROID_APP_URL = process.env.NEXT_PUBLIC_GUMBOOT_ANDROID_APP_URL ?? MOBILE_APP_URL;
@@ -714,7 +715,8 @@ export default function HomeClient() {
   }, []);
 
   useEffect(() => {
-    if (!MOBILE_APP_PROMPT_ENABLED || !isMobileViewport) {
+    const shouldAllowPrompt = FORCE_MOBILE_APP_PROMPT || (MOBILE_APP_PROMPT_ENABLED && isMobileViewport);
+    if (!shouldAllowPrompt) {
       setShowMobileAppPrompt(false);
       return;
     }
