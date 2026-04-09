@@ -10,6 +10,7 @@ import { useMe } from "@/lib/useMe";
 
 type ViewMode = "map" | "list";
 type MobileDeviceKind = "ios" | "android" | "other";
+const PUBLIC_JOB_STATUSES = new Set(["0", "1", "4"]);
 
 const MOBILE_APP_PROMPT_STORAGE_KEY = "gumboot_mobile_app_prompt_dismissed";
 const MOBILE_DEVICE_STORAGE_KEY = "gumboot_mobile_device_info";
@@ -740,7 +741,9 @@ export default function HomeClient() {
         setLoadingJobs(true);
         setError(null);
         const data = await api<unknown>("/home_job_listing", { method: "GET", auth: false });
-        const normalized = normalizeJobs(data);
+        const normalized = normalizeJobs(data).filter((job) =>
+          PUBLIC_JOB_STATUSES.has(String(job.jobStatus ?? "0"))
+        );
         if (mounted) setJobs(normalized);
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : "Failed to load jobs";

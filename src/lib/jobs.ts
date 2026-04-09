@@ -1,5 +1,6 @@
 export type Job = {
   id: string;
+  jobStatus?: string;
   title: string;
   price?: number;
   lat: number;
@@ -145,6 +146,12 @@ export function normalizeJobs(apiBody: unknown): Job[] {
       const date = typeof row.date === "string" ? row.date : undefined;
       const shiftTime = typeof row.shift_time === "string" ? row.shift_time : undefined;
       const expDate = typeof row.exp_date === "string" ? row.exp_date : undefined;
+      const jobStatus =
+        row.job_status != null
+          ? String(row.job_status)
+          : row.status != null
+            ? String(row.status)
+            : undefined;
 
       if (!hasValidCoordinates(lat, lng)) {
         return null;
@@ -155,6 +162,7 @@ export function normalizeJobs(apiBody: unknown): Job[] {
 
       return {
         id: String(id ?? crypto.randomUUID()),
+        jobStatus,
         title,
         price,
         lat: resolvedLat,
@@ -177,5 +185,10 @@ export function normalizeJobs(apiBody: unknown): Job[] {
     })
     .filter((j): j is Job => j !== null);
 
-  return normalized;
+  const seen = new Set<string>();
+  return normalized.filter((job) => {
+    if (seen.has(job.id)) return false;
+    seen.add(job.id);
+    return true;
+  });
 }

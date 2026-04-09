@@ -1033,6 +1033,11 @@ export default function JobDetailsClient({ id }: { id: string }) {
     return worker;
   }, [job?.workerId, posterActiveRequest]);
   const activeWorkerId = activeWorker?._id ?? (typeof job?.workerId === "string" ? job.workerId : "");
+  const privateJobStatuses = new Set(["2", "3", "6", "7", "8", "9"]);
+  const canViewPrivateJob =
+    !privateJobStatuses.has(status) ||
+    isPoster ||
+    (Boolean(me?._id) && Boolean(activeWorkerId) && String(me?._id) === String(activeWorkerId));
   const chatReadyStatuses = new Set(["2", "3", "6", "7", "8", "9"]);
   const ratedByMe = Number(job?.ratedbyme ?? 0) === 1;
   const reviewTargetId = isPoster ? activeWorkerId : getJobOwnerId(job);
@@ -1270,7 +1275,14 @@ export default function JobDetailsClient({ id }: { id: string }) {
             </>
           )}
 
-          {job && (
+          {!err && job && !canViewPrivateJob && (
+            <div className="jdc-error">
+              <div className="jdc-error-icon">⚠</div>
+              <p className="jdc-error-msg">This job is no longer publicly available.</p>
+            </div>
+          )}
+
+          {job && canViewPrivateJob && (
             <>
               {/* ── JOB ── */}
               <div className="jdc-job">
