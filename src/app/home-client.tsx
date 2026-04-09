@@ -637,17 +637,8 @@ function getLocationSummary(job: Job) {
       : typeof raw.suburb === "string"
         ? raw.suburb
         : "";
-  const city =
-    typeof addressObject?.city === "string"
-      ? addressObject.city
-      : typeof raw.city === "string"
-        ? raw.city
-        : job.city || "";
 
   const cleanSuburb = suburb.trim();
-  const cleanCity = city.trim();
-  if (cleanSuburb && cleanCity) return `${cleanSuburb}, ${cleanCity}`;
-  if (cleanCity) return cleanCity;
   if (cleanSuburb) return cleanSuburb;
 
   const addressText = (job.addressText ?? "").trim();
@@ -656,7 +647,7 @@ function getLocationSummary(job: Job) {
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean);
-  return parts[0] || addressText;
+  return parts[1] || parts[0] || addressText;
 }
 
 export default function HomeClient() {

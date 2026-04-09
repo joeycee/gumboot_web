@@ -597,9 +597,7 @@ function getLocationParts(job: Job) {
 }
 
 function getLocationSummary(job: Job) {
-  const { suburb, city } = getLocationParts(job);
-  if (suburb && city) return `${suburb}, ${city}`;
-  if (city) return city;
+  const { suburb } = getLocationParts(job);
   if (suburb) return suburb;
 
   const addressText = (job.addressText ?? "").trim();
@@ -608,9 +606,7 @@ function getLocationSummary(job: Job) {
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean);
-  if (parts.length >= 3) return `${parts[1]}, ${parts[2]}`;
-  if (parts.length >= 2) return `${parts[0]}, ${parts[1]}`;
-  return parts[0] || "Location pending";
+  return parts[1] || parts[0] || "Location pending";
 }
 
 function RatingStars({ value }: { value: number }) {

@@ -705,20 +705,13 @@ function getAddressText(a?: AddressValue) {
       .split(",")
       .map((part) => part.trim())
       .filter(Boolean);
-    if (parts.length >= 3) return `${parts[1]}, ${parts[2]}`;
-    if (parts.length >= 2) return `${parts[0]}, ${parts[1]}`;
-    return parts[0] || null;
+    return parts[1] || parts[0] || null;
   }
 
   const suburb =
     typeof (a as { suburb?: unknown }).suburb === "string"
       ? String((a as { suburb?: unknown }).suburb).trim()
       : "";
-  const city = typeof a.city === "string" ? a.city.trim() : "";
-  const state = typeof a.state === "string" ? a.state.trim() : "";
-  if (suburb && city) return `${suburb}, ${city}`;
-  if (city && state) return `${city}, ${state}`;
-  if (city) return city;
   if (suburb) return suburb;
 
   const rawAddress = typeof a.address === "string" ? a.address.trim() : "";
@@ -727,9 +720,7 @@ function getAddressText(a?: AddressValue) {
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean);
-  if (parts.length >= 3) return `${parts[1]}, ${parts[2]}`;
-  if (parts.length >= 2) return `${parts[0]}, ${parts[1]}`;
-  return parts[0] || null;
+  return parts[1] || parts[0] || null;
 }
 
 function getPosterName(u?: UserValue) {

@@ -89,7 +89,15 @@ export async function updateNotificationRadius(payload: {
 }
 
 export function normalizeNotifications(response: ApiEnvelope<NotificationItem[]> | null | undefined) {
-  return Array.isArray(response?.body) ? response.body : [];
+  const body = response?.body;
+  if (Array.isArray(body)) return body;
+  if (body && typeof body === "object") {
+    const record = body as { notifications?: NotificationItem[]; data?: NotificationItem[]; items?: NotificationItem[] };
+    if (Array.isArray(record.notifications)) return record.notifications;
+    if (Array.isArray(record.data)) return record.data;
+    if (Array.isArray(record.items)) return record.items;
+  }
+  return [];
 }
 
 export function getNotificationJobId(item?: NotificationItem | null) {

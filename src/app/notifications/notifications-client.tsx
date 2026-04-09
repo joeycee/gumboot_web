@@ -6,13 +6,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { resolveUserImageUrl } from "@/lib/messages";
 import {
-  broadcastNotificationsRefresh,
   getNotificationHref,
   getNotificationJobId,
   getNotificationReadState,
+  getNotificationJobStatusLabel,
+  getNotificationTypeLabel,
   getNotifications,
   normalizeNotifications,
-  readNotifications,
   resolveNotificationHref,
   updateNotificationRadius,
   updateNotificationStatus,
@@ -278,11 +278,6 @@ export default function NotificationsClient() {
       return;
     }
     loadNotifications();
-    readNotifications()
-      .then(() => {
-        broadcastNotificationsRefresh();
-      })
-      .catch(() => undefined);
   }, [loadNotifications, me?._id, meLoading, router]);
 
   async function handleToggleNotifications() {
@@ -463,6 +458,8 @@ export default function NotificationsClient() {
                   const senderAvatar = resolveUserImageUrl(sender?.image);
                   const href = getNotificationHref(item);
                   const unread = !getNotificationReadState(item);
+                  const typeLabel = getNotificationTypeLabel(item);
+                  const statusLabel = getNotificationJobStatusLabel(item);
 
                   return (
                     <Link
@@ -487,7 +484,9 @@ export default function NotificationsClient() {
                         <div className="noti-name">{senderName}</div>
                         <div className="noti-msg">{item.notification?.message?.trim() || "Notification update"}</div>
                         <div className="noti-meta">
+                          {typeLabel ? <span className="noti-pill">{typeLabel}</span> : null}
                           {getNotificationJobId(item) ? <span className="noti-pill">Job update</span> : null}
+                          {statusLabel ? <span className="noti-pill">{statusLabel}</span> : null}
                           {unread ? <span className="noti-pill">Unread</span> : null}
                         </div>
                       </div>
