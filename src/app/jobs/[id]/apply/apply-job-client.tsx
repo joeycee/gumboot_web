@@ -11,7 +11,7 @@ type MeUser = {
   _id?: string;
   firstname?: string;
   lastname?: string;
-  role?: string | number;
+  verified_user?: string | number;
 };
 
 const styles = `
@@ -163,7 +163,10 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
       router.replace(`/auth/login?next=${encodeURIComponent(`/jobs/${jobId}/apply`)}`);
       return;
     }
-  }, [jobId, me?._id, meLoading, router]);
+    if (Number(me.verified_user ?? 0) !== 1) {
+      router.replace(`/auth/signup/profile-setup?next=${encodeURIComponent(`/jobs/${jobId}/apply`)}`);
+    }
+  }, [jobId, me?._id, me?.verified_user, meLoading, router]);
 
   const canSubmit = useMemo(
     () => offerAmount.trim().length > 0 && message.trim().length > 0 && !submitting,
@@ -177,6 +180,10 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
     }
     if (!message.trim()) {
       setError("A short message is required.");
+      return;
+    }
+    if (Number(me?.verified_user ?? 0) !== 1) {
+      router.replace(`/auth/signup/profile-setup?next=${encodeURIComponent(`/jobs/${jobId}/apply`)}`);
       return;
     }
 

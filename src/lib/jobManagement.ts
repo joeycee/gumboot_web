@@ -21,6 +21,13 @@ export async function getUserJobs() {
   return api<ApiEnvelope<{ jobs?: ManagedJob[] }>>("/user_job_listing?page=1&perPage=200");
 }
 
+export async function getRequestedJobs() {
+  return api<ApiEnvelope<{ requestedJobs?: ManagedJob[] }>>("/my_requested_jobs", {
+    method: "POST",
+    body: { page: 1, perPage: 200, search: "" },
+  });
+}
+
 export async function getCompletedJobs() {
   return api<ApiEnvelope<{ completedJobsWithReviews?: ManagedJob[] }>>("/completed_jobs");
 }

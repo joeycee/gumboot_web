@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { api } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import {
   cancelJob,
   deleteJob,
   deleteJobImage,
   editJob,
   getJobCancellationCharges,
+  getRequestedJobs,
   getUserJobs,
   type ManagedJob,
 } from "@/lib/jobManagement";
@@ -210,6 +211,12 @@ const styles = `
     color: #E5E5E5;
   }
   .jm-btn.primary { background: #26A69A; color: white; border-color: transparent; }
+  .jm-btn.warning {
+    background: linear-gradient(180deg, #ff9f68, #f07242);
+    border-color: transparent;
+    color: #fff;
+    box-shadow: 0 14px 28px rgba(240,114,66,0.24);
+  }
   .jm-btn.danger {
     background: rgba(183,91,91,0.16);
     color: #ffe0e0;
@@ -242,6 +249,69 @@ const styles = `
     background: linear-gradient(180deg, rgba(66,79,86,0.96), rgba(37,46,50,0.98));
     box-shadow: 0 24px 80px rgba(0,0,0,0.45);
     padding: 22px;
+  }
+  .jm-warning-modal {
+    width: min(560px, 100%);
+    border-radius: 28px;
+    border: 1px solid rgba(255,189,89,0.28);
+    background:
+      radial-gradient(320px 180px at 12% 0%, rgba(255,141,87,0.26), rgba(0,0,0,0) 60%),
+      linear-gradient(180deg, rgba(68,41,35,0.98), rgba(38,26,24,0.98));
+    box-shadow: 0 36px 90px rgba(0,0,0,0.42);
+    padding: 26px;
+  }
+  .jm-warning-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 11px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,189,89,0.24);
+    background: rgba(255,189,89,0.10);
+    color: #ffd69a;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .jm-warning-title {
+    margin: 16px 0 8px;
+    font-family: 'DM Serif Display', serif;
+    font-size: 33px;
+    line-height: 1.05;
+    color: #fff4e8;
+  }
+  .jm-warning-copy {
+    margin: 0;
+    color: rgba(255,236,221,0.78);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  .jm-warning-card {
+    margin-top: 18px;
+    padding: 16px 18px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,189,89,0.16);
+    background: rgba(255,244,232,0.06);
+    color: #fff0dc;
+  }
+  .jm-warning-fee {
+    margin: 0 0 6px;
+    font-size: 26px;
+    font-weight: 700;
+    color: #fff7ef;
+  }
+  .jm-warning-note {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+    color: rgba(255,236,221,0.72);
+  }
+  .jm-warning-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 22px;
   }
   .jm-modal-head {
     display: flex;
@@ -279,6 +349,12 @@ const styles = `
     text-transform: uppercase;
     color: rgba(229,229,229,0.42);
     margin-bottom: 6px;
+  }
+  .jm-help {
+    margin-bottom: 6px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: rgba(229,229,229,0.66);
   }
   .jm-input, .jm-textarea, .jm-select {
     width: 100%;
@@ -360,14 +436,8 @@ const styles = `
   }
 `;
 
-const ACCEPTED_JOB_STATUSES = new Set(["2", "3", "6", "7", "8", "9"]);
+const ACCEPTED_JOB_STATUSES = new Set(["2", "3", "6", "8", "9"]);
 const LOCKED_JOB_STATUSES = new Set(["2", "3", "6", "7", "8", "9"]);
-
-type RequestedJobEnvelope = {
-  body?: {
-    requestedJobs?: ManagedJob[];
-  };
-};
 
 function stringifyAddress(address: unknown) {
   if (!address) return "Address unavailable";
@@ -392,6 +462,16 @@ function getJobImageUrl(job: ManagedJob) {
   return firstImage ? resolveChatMediaUrl(firstImage) : "/globe.svg";
 }
 
+function dedupeJobsById(jobs: ManagedJob[]) {
+  const seen = new Set<string>();
+  return jobs.filter((job) => {
+    const id = String(job._id ?? "");
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
 function getStatusTone(status: string | number | undefined) {
   const normalized = String(status ?? "");
   if (normalized === "2") return "accepted";
@@ -400,10 +480,15 @@ function getStatusTone(status: string | number | undefined) {
   return "";
 }
 
+function requiresAcceptedJobCancellationFee(status: string | number | undefined) {
+  return ACCEPTED_JOB_STATUSES.has(String(status ?? "")) || LOCKED_JOB_STATUSES.has(String(status ?? ""));
+}
+
 export default function ManageJobsPage() {
   const searchParams = useSearchParams();
   const [postedJobs, setPostedJobs] = useState<ManagedJob[]>([]);
   const [acceptedJobs, setAcceptedJobs] = useState<ManagedJob[]>([]);
+  const [deleteWarningJobId, setDeleteWarningJobId] = useState<string | null>(null);
   const [jobTypes, setJobTypes] = useState<JobType[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -432,26 +517,38 @@ export default function ManageJobsPage() {
     try {
       setLoading(true);
       setError(null);
-      const [jobsRes, requestedRes, chargesRes, typesRes] = await Promise.all([
+      const [jobsRes, requestedRes, chargesRes, typesRes] = await Promise.allSettled([
         getUserJobs(),
-        api<RequestedJobEnvelope>("/my_requested_jobs", {
-          method: "POST",
-          body: { page: 1, perPage: 200, search: "" },
-        }),
+        getRequestedJobs(),
         getJobCancellationCharges(),
         getJobTypes(),
       ]);
 
-      const nextPostedJobs = Array.isArray(jobsRes.body?.jobs) ? jobsRes.body.jobs : [];
-      const nextRequestedJobs = Array.isArray(requestedRes.body?.requestedJobs) ? requestedRes.body.requestedJobs : [];
-      const nextAcceptedJobs = nextRequestedJobs.filter((job) =>
-        ACCEPTED_JOB_STATUSES.has(String(job.job_status ?? ""))
+      if (jobsRes.status !== "fulfilled") throw jobsRes.reason;
+      if (chargesRes.status !== "fulfilled") throw chargesRes.reason;
+      if (typesRes.status !== "fulfilled") throw typesRes.reason;
+
+      let nextRequestedJobs: ManagedJob[] = [];
+      if (requestedRes.status === "fulfilled") {
+        nextRequestedJobs = Array.isArray(requestedRes.value.body?.requestedJobs)
+          ? requestedRes.value.body.requestedJobs
+          : [];
+      } else if (
+        !(requestedRes.reason instanceof ApiError) ||
+        !["No job requests found.", "No jobs found for your request."].includes(requestedRes.reason.message)
+      ) {
+        throw requestedRes.reason;
+      }
+
+      const nextPostedJobs = Array.isArray(jobsRes.value.body?.jobs) ? jobsRes.value.body.jobs : [];
+      const nextAcceptedJobs = dedupeJobsById(
+        nextRequestedJobs.filter((job) => ACCEPTED_JOB_STATUSES.has(String(job.job_status ?? "")))
       );
 
       setPostedJobs(nextPostedJobs);
       setAcceptedJobs(nextAcceptedJobs);
-      setChargesMessage(chargesRes.message ?? null);
-      setJobTypes(typesRes);
+      setChargesMessage(chargesRes.value.message ?? null);
+      setJobTypes(typesRes.value);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to load job management data.");
     } finally {
@@ -514,7 +611,7 @@ export default function ManageJobsPage() {
   async function handleDeleteJob(jobId: string) {
     const targetJob = postedJobs.find((job) => String(job._id ?? "") === jobId);
     if (isJobLockedAfterAcceptance(targetJob?.job_status)) {
-      setError("This job can no longer be deleted because an offer has already been accepted.");
+      setDeleteWarningJobId(jobId);
       return;
     }
     if (!window.confirm("Delete this job?")) return;
@@ -530,7 +627,13 @@ export default function ManageJobsPage() {
     }
   }
 
-  async function handleCancelJob(jobId: string) {
+  async function handleCancelJob(jobId: string, opts?: { skipConfirm?: boolean }) {
+    setDeleteWarningJobId(null);
+    const targetJob = postedJobs.find((job) => String(job._id ?? "") === jobId);
+    const confirmMessage = requiresAcceptedJobCancellationFee(targetJob?.job_status)
+      ? "Cancelling this accepted job will charge a NZ$5 penalty to your saved card. Do you want to continue?"
+      : "Cancel this job?";
+    if (!opts?.skipConfirm && !window.confirm(confirmMessage)) return;
     try {
       setError(null);
       setSuccess(null);
@@ -567,6 +670,10 @@ export default function ManageJobsPage() {
   const showPostedSection = postedJobs.length > 0;
   const showAcceptedSection = acceptedJobs.length > 0;
   const showEmptyState = !loading && !showPostedSection && !showAcceptedSection;
+  const deleteWarningJob = useMemo(
+    () => postedJobs.find((job) => String(job._id ?? "") === String(deleteWarningJobId ?? "")) ?? null,
+    [deleteWarningJobId, postedJobs]
+  );
 
   return (
     <>
@@ -649,8 +756,7 @@ export default function ManageJobsPage() {
                             className="jm-btn danger"
                             onClick={() => handleDeleteJob(jobId)}
                             type="button"
-                            disabled={locked}
-                            title={locked ? "Accepted jobs cannot be deleted." : undefined}
+                            title={locked ? "An accepted job cannot be deleted a $5 penalty will be incured" : undefined}
                           >
                             Delete
                           </button>
@@ -754,10 +860,12 @@ export default function ManageJobsPage() {
 
               <div className="jm-field">
                 <label className="jm-label">Description</label>
+                <div className="jm-help">If you will provide anything for this job please state here.</div>
                 <textarea
                   className="jm-textarea"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
+                  placeholder="If you will provide anything for this job please state here."
                   disabled={selectedJobLocked}
                 />
               </div>
@@ -868,6 +976,38 @@ export default function ManageJobsPage() {
                   type="button"
                 >
                   {saving ? "Saving…" : "Save changes"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {deleteWarningJob ? (
+          <div className="jm-modal-backdrop" role="dialog" aria-modal="true" aria-label="Accepted job warning">
+            <div className="jm-warning-modal">
+              <div className="jm-warning-kicker">Accepted Job Warning</div>
+              <h2 className="jm-warning-title">This job can&apos;t be deleted for free.</h2>
+              <p className="jm-warning-copy">
+                An accepted job cannot be deleted a $5 penalty will be incured. If you continue, we&apos;ll cancel this
+                accepted job and automatically charge the fee to your saved card.
+              </p>
+              <div className="jm-warning-card">
+                <p className="jm-warning-fee">NZ$5 cancellation fee</p>
+                <p className="jm-warning-note">
+                  Job: {deleteWarningJob.job_title || "Accepted job"}. Choose keep to leave it alone, or delete anyway
+                  to cancel it now and charge the fee automatically.
+                </p>
+              </div>
+              <div className="jm-warning-actions">
+                <button className="jm-btn" type="button" onClick={() => setDeleteWarningJobId(null)}>
+                  Keep
+                </button>
+                <button
+                  className="jm-btn warning"
+                  type="button"
+                  onClick={() => handleCancelJob(String(deleteWarningJob._id ?? ""), { skipConfirm: true })}
+                >
+                  Delete anyway
                 </button>
               </div>
             </div>

@@ -22,6 +22,7 @@ type MeUser = {
   _id?: string;
   firstname?: string;
   lastname?: string;
+  verified_user?: string | number;
 };
 
 const styles = `
@@ -68,6 +69,11 @@ const styles = `
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: rgba(229,229,229,0.42);
+  }
+  .pj-help {
+    font-size: 13px;
+    line-height: 1.5;
+    color: rgba(229,229,229,0.66);
   }
   .pj-input, .pj-textarea {
     border: 1px solid rgba(229,229,229,0.14);
@@ -1091,6 +1097,29 @@ export default function PostJobPage() {
         return;
       }
 
+      if (Number(me?.verified_user ?? 0) !== 1) {
+        setPendingResumeSubmit(true);
+        await cachePostJobImages(files);
+        writePostJobDraft({
+          step: steps.length - 1,
+          title,
+          description,
+          jobTypeId,
+          budget,
+          dateMode,
+          jobDate,
+          timeMode,
+          exactTime,
+          addressLine,
+          lat,
+          lng,
+          pendingSubmit: true,
+          hadImages: files.length > 0,
+        });
+        router.push(`/auth/signup/profile-setup?next=${encodeURIComponent(resumePath)}`);
+        return;
+      }
+
       setLoading(true);
 
       const canPostWithCard = await refreshSavedCardState();
@@ -1245,6 +1274,7 @@ export default function PostJobPage() {
     lng,
     meLoading,
     me?._id,
+    me?.verified_user,
     refreshSavedCardState,
     resumePath,
     router,
@@ -1326,6 +1356,17 @@ export default function PostJobPage() {
             </div>
           )}
 
+          {step === steps.length - 1 && readToken() && !meLoading && Number(me?.verified_user ?? 0) !== 1 && (
+            <div className="pj-banner">
+              ID verification is required before posting a job.
+              {" "}
+              <Link className="pj-banner-link" href={`/auth/signup/profile-setup?next=${encodeURIComponent(resumePath)}`}>
+                Upload your ID documents
+              </Link>
+              {" "}and we&apos;ll bring you back here to finish posting.
+            </div>
+          )}
+
           {error && <div className="pj-error">{error}</div>}
 
           {/* Step 1: Basics */}
@@ -1343,11 +1384,12 @@ export default function PostJobPage() {
 
               <div className="pj-field">
                 <label className="pj-label">Job description</label>
+                <div className="pj-help">If you will provide anything for this job please state here.</div>
                 <textarea
                   className="pj-textarea"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe exactly what needs to be done."
+                  placeholder="Describe exactly what needs to be done. If you will provide anything for this job please state here."
                 />
               </div>
             </div>

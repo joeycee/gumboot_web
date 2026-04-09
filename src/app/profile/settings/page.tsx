@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ApiError, clearAuthToken } from "@/lib/api";
-import { changeRole, deleteAccount, updateProfile } from "@/lib/account";
+import { deleteAccount, updateProfile } from "@/lib/account";
 import { useMe } from "@/lib/useMe";
 
 type MeUser = {
@@ -13,7 +13,6 @@ type MeUser = {
   lastname?: string;
   email?: string;
   bio?: string;
-  role?: string | number;
 };
 
 const styles = `
@@ -169,7 +168,6 @@ export default function ProfileSettingsPage() {
   const [lastname, setLastname] = useState("");
   const [email, setEmail] = useState("");
   const [bio, setBio] = useState("");
-  const [role, setRole] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -181,7 +179,6 @@ export default function ProfileSettingsPage() {
     setLastname(me.lastname ?? "");
     setEmail(me.email ?? "");
     setBio(me.bio ?? "");
-    setRole(String(me.role ?? ""));
   }, [me]);
 
   useEffect(() => {
@@ -212,21 +209,6 @@ export default function ProfileSettingsPage() {
         return;
       }
       setError(nextError instanceof Error ? nextError.message : "Unable to update profile.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleRoleChange() {
-    if (!role) return;
-    setError(null);
-    setSuccess(null);
-    try {
-      setSaving(true);
-      await changeRole(role);
-      setSuccess("Role updated.");
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to change role.");
     } finally {
       setSaving(false);
     }
@@ -299,17 +281,7 @@ export default function ProfileSettingsPage() {
 
             <section className="pset-card">
               <h2 className="pset-section-title">Account controls</h2>
-              <div className="pset-field">
-                <label className="pset-label">Role</label>
-                <select className="pset-select" value={role} onChange={(e) => setRole(e.target.value)}>
-                  <option value="1">Employer</option>
-                  <option value="2">Worker</option>
-                </select>
-              </div>
               <div className="pset-actions">
-                <button className="pset-btn secondary" disabled={saving} onClick={handleRoleChange} type="button">
-                  Update role
-                </button>
                 <button className="pset-btn danger" disabled={saving} onClick={handleDeleteAccount} type="button">
                   Delete account
                 </button>
@@ -317,11 +289,11 @@ export default function ProfileSettingsPage() {
 
               <div className="pset-list" style={{ marginTop: 20 }}>
                 <div className="pset-item">
-                  <div className="pset-item-title">Worker setup</div>
-                  <div className="pset-item-copy">Upload identity documents, manage skills, and add tools.</div>
+                  <div className="pset-item-title">Profile and ID verification</div>
+                  <div className="pset-item-copy">Upload or refresh your identity documents for posting jobs and sending offers.</div>
                   <div className="pset-actions">
                     <Link className="pset-linkbtn secondary" href="/auth/signup/profile-setup?mode=settings">
-                      Open worker setup
+                      Open verification
                     </Link>
                   </div>
                 </div>
