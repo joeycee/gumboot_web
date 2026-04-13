@@ -47,7 +47,6 @@ const styles = `
     padding: 44px 40px 40px;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
     min-height: 420px;
     position: relative;
     overflow: hidden;
@@ -99,39 +98,163 @@ const styles = `
   }
   .sp-logo-dot { color: #26A69A; }
 
+  .sp-hero-top {
+    position: relative;
+    z-index: 1;
+  }
+
+  .sp-pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+  .sp-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid rgba(229,229,229,0.1);
+    border-radius: 999px;
+    background: rgba(42,52,57,0.5);
+    padding: 8px 12px;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: rgba(229,229,229,0.7);
+  }
+  .sp-pill::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #26A69A;
+    box-shadow: 0 0 0 4px rgba(38,166,154,0.12);
+    flex-shrink: 0;
+  }
+
+  .sp-hero-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 38px;
+    font-weight: 400;
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    color: #F4F0EA;
+    max-width: 520px;
+    margin-bottom: 18px;
+  }
+
   .sp-tagline {
-    font-size: 14px;
-    color: rgba(229,229,229,0.52);
-    line-height: 1.75;
-    font-weight: 300;
-    max-width: 320px;
+    font-size: 15px;
+    color: rgba(229,229,229,0.66);
+    line-height: 1.8;
+    font-weight: 400;
+    max-width: 500px;
+    margin-bottom: 28px;
+  }
+
+  .sp-hero-note {
+    max-width: 460px;
+    border-left: 2px solid rgba(38,166,154,0.55);
+    padding-left: 16px;
+    color: rgba(229,229,229,0.56);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  .sp-bottom-panel {
+    grid-column: 1 / -1;
+    border: 1px solid rgba(229,229,229,0.08);
+    border-radius: 20px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02)),
+      #344047;
+    padding: 28px 30px;
+    position: relative;
+    overflow: hidden;
+  }
+  .sp-bottom-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at top left, rgba(38,166,154,0.08), transparent 34%),
+      radial-gradient(circle at bottom right, rgba(91,110,127,0.1), transparent 38%);
+    pointer-events: none;
+  }
+  .sp-bottom-head {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+  }
+  .sp-bottom-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 24px;
+    font-weight: 400;
+    line-height: 1.15;
+    color: #F4F0EA;
+  }
+  .sp-bottom-sub {
+    max-width: 420px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: rgba(229,229,229,0.58);
+    text-align: right;
   }
 
   .sp-stats {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    margin-top: 40px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    position: relative;
+    z-index: 1;
   }
   .sp-stat {
     border: 1px solid rgba(229,229,229,0.08);
-    border-radius: 10px;
-    padding: 16px 14px;
-    background: rgba(42,52,57,0.60);
+    border-radius: 16px;
+    padding: 18px 18px 18px 20px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02)),
+      rgba(42,52,57,0.58);
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
+    backdrop-filter: blur(4px);
+  }
+  .sp-stat-index {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    border: 1px solid rgba(38,166,154,0.22);
+    background: rgba(38,166,154,0.1);
+    color: #9fe0d8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .sp-stat-copy {
+    min-width: 0;
   }
   .sp-stat-label {
-    font-size: 10px;
-    font-weight: 500;
-    letter-spacing: 0.10em;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: rgba(229,229,229,0.35);
-    margin-bottom: 8px;
+    color: rgba(229,229,229,0.48);
+    margin-bottom: 6px;
   }
   .sp-stat-value {
-    font-family: 'DM Serif Display', serif;
-    font-size: 24px;
-    color: #E5E5E5;
-    line-height: 1;
+    font-size: 14px;
+    line-height: 1.65;
+    color: rgba(244,240,234,0.94);
+    font-weight: 400;
   }
 
   /* ── Form panel ── */
@@ -295,6 +418,16 @@ const styles = `
   /* Footer */
   .sp-divider { height: 1px; background: rgba(229,229,229,0.08); margin: 22px 0; }
   .sp-legal { font-size: 11px; color: rgba(229,229,229,0.25); line-height: 1.65; margin-bottom: 12px; }
+  .sp-legal-link {
+    color: rgba(229,229,229,0.72);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(229,229,229,0.18);
+    transition: color 0.14s, border-color 0.14s;
+  }
+  .sp-legal-link:hover {
+    color: #E5E5E5;
+    border-color: rgba(229,229,229,0.42);
+  }
   .sp-login-row { font-size: 13px; color: rgba(229,229,229,0.50); }
   .sp-login-link {
     color: #26A69A;
@@ -326,17 +459,53 @@ const styles = `
       font-size: 34px;
       margin-bottom: 14px;
     }
+    .sp-hero-title {
+      font-size: 30px;
+      margin-bottom: 14px;
+    }
     .sp-tagline {
       max-width: none;
-      font-size: 13px;
+      font-size: 14px;
+      line-height: 1.7;
+      margin-bottom: 20px;
+    }
+    .sp-hero-note {
+      max-width: none;
+      font-size: 12px;
       line-height: 1.65;
     }
     .sp-stats {
       grid-template-columns: 1fr;
-      margin-top: 24px;
+    }
+    .sp-bottom-panel {
+      padding: 22px 20px;
+      border-radius: 18px;
+    }
+    .sp-bottom-head {
+      align-items: start;
+      justify-content: flex-start;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .sp-bottom-title {
+      font-size: 21px;
+    }
+    .sp-bottom-sub {
+      max-width: none;
+      text-align: left;
+      font-size: 12px;
+      line-height: 1.65;
     }
     .sp-stat {
-      padding: 14px 12px;
+      grid-template-columns: 38px minmax(0, 1fr);
+      gap: 12px;
+      padding: 14px;
+    }
+    .sp-stat-index {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
     }
     .sp-form-panel {
       padding: 24px 20px;
@@ -425,26 +594,20 @@ export default function SignupPage() {
 
           {/* ── Hero ── */}
           <section className="sp-hero">
-            <div>
+            <div className="sp-hero-top">
               <p className="sp-eyebrow">Get started</p>
               <h1 className="sp-logo">Gumboot<span className="sp-logo-dot">.</span></h1>
+              <div className="sp-pill-row">
+                <span className="sp-pill">Built for New Zealand</span>
+                <span className="sp-pill">Secure signup</span>
+              </div>
+              <h2 className="sp-hero-title">Local help, without the hard sell.</h2>
               <p className="sp-tagline">
-                Book trusted local help in minutes. Post a task, review quotes, and pick the right person — with secure payment and verified profiles.
+                A simple way to find local help around Aotearoa. Post a job, have a look at who puts their hand up, and choose what feels right.
               </p>
-            </div>
-            <div className="sp-stats">
-              <div className="sp-stat">
-                <p className="sp-stat-label">Completed</p>
-                <p className="sp-stat-value">12k+</p>
-              </div>
-              <div className="sp-stat">
-                <p className="sp-stat-label">Response</p>
-                <p className="sp-stat-value">8 min</p>
-              </div>
-              <div className="sp-stat">
-                <p className="sp-stat-label">Verified</p>
-                <p className="sp-stat-value">98%</p>
-              </div>
+              <p className="sp-hero-note">
+                Gumboot is designed to feel dependable from the start: clear profiles, straightforward communication, and a signup flow that keeps things simple.
+              </p>
             </div>
           </section>
 
@@ -539,11 +702,47 @@ export default function SignupPage() {
             </form>
 
             <div className="sp-divider" />
-            <p className="sp-legal">By continuing, you agree to Gumboot&apos;s Terms of Service and Privacy Policy.</p>
+            <p className="sp-legal">
+              By continuing, you agree to Gumboot&apos;s{" "}
+              <Link href="/terms" className="sp-legal-link">Terms of Service</Link> and{" "}
+              <Link href="/privacy" className="sp-legal-link">Privacy Policy</Link>.
+            </p>
             <p className="sp-login-row">
               Already have an account?{" "}
               <Link href="/auth/login" className="sp-login-link">Sign in</Link>
             </p>
+          </section>
+
+          <section className="sp-bottom-panel">
+            <div className="sp-bottom-head">
+              <h3 className="sp-bottom-title">A more grounded way to get started.</h3>
+              <p className="sp-bottom-sub">
+                Clear expectations, local focus, and a signup flow that keeps things moving.
+              </p>
+            </div>
+            <div className="sp-stats">
+              <div className="sp-stat">
+                <div className="sp-stat-index">01</div>
+                <div className="sp-stat-copy">
+                  <p className="sp-stat-label">Straight up</p>
+                  <p className="sp-stat-value">No inflated numbers. Just a new platform getting started properly.</p>
+                </div>
+              </div>
+              <div className="sp-stat">
+                <div className="sp-stat-index">02</div>
+                <div className="sp-stat-copy">
+                  <p className="sp-stat-label">Local first</p>
+                  <p className="sp-stat-value">Built for everyday jobs, neighbours helping neighbours, and small businesses lending a hand.</p>
+                </div>
+              </div>
+              <div className="sp-stat">
+                <div className="sp-stat-index">03</div>
+                <div className="sp-stat-copy">
+                  <p className="sp-stat-label">No fuss</p>
+                  <p className="sp-stat-value">Create an account, verify your number, and get on with it.</p>
+                </div>
+              </div>
+            </div>
           </section>
 
         </div>
