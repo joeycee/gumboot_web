@@ -317,6 +317,19 @@ function formatMoney(value?: string | number | null) {
   return `$${value}`;
 }
 
+function toMoneyNumber(value?: string | number | null) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
 function formatDateTime(value?: string | null) {
   if (!value) return "Not available";
   const date = new Date(value);
@@ -447,6 +460,10 @@ export default function CompletionReviewClient({
   const jobTitle = getJobTitle(job);
   const jobDescription = getJobDescription(job);
   const agreedPrice = offer?.offered_price ?? job?.offered_price ?? job?.price ?? "";
+  const agreedPriceNumber = toMoneyNumber(agreedPrice);
+  const serviceFee = roundMoney(agreedPriceNumber * 0.035);
+  const customerTotal = roundMoney(agreedPriceNumber + serviceFee);
+  const workerNet = roundMoney(agreedPriceNumber - serviceFee);
   const submittedAt = offer?.updatedAt ?? offer?.createdAt ?? null;
   const profileHref = buildPublicProfileHref({ userId: workerId, jobId: requestId });
   const canMessage = Boolean(me?._id && (isOwner || me?._id === workerId));
@@ -556,6 +573,18 @@ export default function CompletionReviewClient({
                     <div className="jcr-value price">{formatMoney(agreedPrice)}</div>
                   </div>
                   <div className="jcr-block">
+                    <div className="jcr-label">Service fee</div>
+                    <div className="jcr-value">{formatMoney(serviceFee)}</div>
+                  </div>
+                  <div className="jcr-block">
+                    <div className="jcr-label">Customer pays</div>
+                    <div className="jcr-value">{formatMoney(customerTotal)}</div>
+                  </div>
+                  <div className="jcr-block">
+                    <div className="jcr-label">Worker receives</div>
+                    <div className="jcr-value">{formatMoney(workerNet)}</div>
+                  </div>
+                  <div className="jcr-block">
                     <div className="jcr-label">Payment status</div>
                     <div className="jcr-value">
                       {alreadyFinished ? "Confirmed and paid" : canComplete ? "Awaiting customer sign-off" : getJobStatusLabel(offer.job_status)}
@@ -576,6 +605,13 @@ export default function CompletionReviewClient({
                   <div className="jcr-label">Completion notes</div>
                   <div className="jcr-copy">
                     {jobDescription || "The current Flutter/backend contract does not store a separate completion note. The original job description is shown here as the closest available context."}
+                  </div>
+                </div>
+
+                <div className="jcr-block">
+                  <div className="jcr-label">Payment breakdown</div>
+                  <div className="jcr-copy">
+                    The agreed offer is {formatMoney(agreedPrice)}. With a 3.5% service fee, the customer is charged {formatMoney(customerTotal)} and the worker should receive {formatMoney(workerNet)} in their wallet.
                   </div>
                 </div>
 
@@ -658,7 +694,7 @@ export default function CompletionReviewClient({
                   </button>
                   {canComplete ? (
                     <button type="button" className="jcr-btn primary" onClick={handleCompleteJob} disabled={actionBusy}>
-                      {actionBusy ? "Processing payment..." : `Complete job • ${formatMoney(agreedPrice)}`}
+                      {actionBusy ? "Processing payment..." : `Complete job • ${formatMoney(customerTotal)}`}
                     </button>
                   ) : null}
                   {alreadyFinished ? (

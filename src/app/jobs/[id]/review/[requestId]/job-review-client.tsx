@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
   fetchJobApplications,
@@ -234,6 +235,7 @@ export default function JobReviewClient({
   jobId: string;
   requestId: string;
 }) {
+  const router = useRouter();
   const { user: meUser, loading: meLoading } = useMe();
   const me = (meUser ?? null) as { _id?: string } | null;
 
@@ -313,6 +315,7 @@ export default function JobReviewClient({
         jobId: job._id,
       });
       setMessage(`Review submitted for ${workerName}.`);
+      router.push(`/jobs/${encodeURIComponent(job._id || jobId)}/completion/${encodeURIComponent(requestId)}`);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to submit review.");
     } finally {
