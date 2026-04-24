@@ -236,6 +236,7 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
                   placeholder="180"
                   value={offerAmount}
                   onChange={(e) => setOfferAmount(e.target.value.replace(/[^\d.]/g, ""))}
+                  data-testid="apply-offer-amount"
                 />
               </label>
 
@@ -246,19 +247,16 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
                   placeholder="I can do this tomorrow morning."
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
+                  data-testid="apply-message"
                 />
               </label>
-
-              <div className="apply-note">
-                Your offer sends `jobid`, `message`, and `offered_price` to the backend exactly as the mobile app flow expects.
-              </div>
 
               {error ? <div className="apply-error">{error}</div> : null}
               {success ? <div className="apply-success">{success}</div> : null}
             </div>
 
             <div className="apply-actions">
-              <button className="apply-btn primary" type="button" disabled={!canSubmit} onClick={handleSubmit}>
+              <button className="apply-btn primary" type="button" disabled={!canSubmit} onClick={handleSubmit} data-testid="apply-send-offer">
                 {submitting ? "Sending..." : "Send offer"}
               </button>
               <Link className="apply-btn secondary" href={`/jobs/${jobId}`}>

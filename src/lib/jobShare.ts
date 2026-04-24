@@ -1,0 +1,211 @@
+import type { JobDetailsEnvelope, JobDetails, AddressValue, JobTypeValue, UserValue } from "@/lib/jobFlow";
+import { getJobDescription, getJobTitle, normalizeJobDetails } from "@/lib/jobFlow";
+import { getSiteUrl } from "@/lib/site";
+
+type JobDetailsResponse = {
+  statusCode: number;
+  body: string;
+  contentType: string | null;
+};
+
+export type JobShareData = {
+  id: string;
+  title: string;
+  description: string;
+  shareDescription: string;
+  priceLabel: string | null;
+  jobTypeName: string | null;
+  location: string | null;
+  dateLabel: string | null;
+  posterName: string | null;
+  imageUrl: string | null;
+  url: string;
+};
+
+function getBackendBaseUrl() {
+  const value = process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (!value) {
+    throw new Error("NEXT_PUBLIC_API_BASE_URL is not configured");
+  }
+  return value;
+}
+
+function resolveMediaUrl(path?: string) {
+  if (!path) return null;
+  const trimmed = path.trim();
+  if (!trimmed || trimmed === "/" || trimmed === "#" || trimmed === "undefined" || trimmed === "null") return null;
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("data:")) return trimmed;
+
+  const root = getBackendBaseUrl().replace(/\/api\/?$/, "");
+  const normalizedPath = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return `${root}${normalizedPath}`;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getJobTypeName(jobType?: JobTypeValue) {
+  if (!jobType) return null;
+  if (typeof jobType === "string") return jobType.trim() || null;
+  return typeof jobType.name === "string" && jobType.name.trim() ? jobType.name.trim() : null;
+}
+
+function getPosterName(user?: UserValue) {
+  if (!user || typeof user === "string" || !isObject(user)) return null;
+  const first = typeof user.firstname === "string" ? user.firstname.trim() : "";
+  const last = typeof user.lastname === "string" ? user.lastname.trim() : "";
+  const full = [first, last].filter(Boolean).join(" ").trim();
+  if (full) return full;
+  return typeof user.name === "string" && user.name.trim() ? user.name.trim() : null;
+}
+
+function getAddressText(address?: AddressValue) {
+  if (!address) return null;
+  if (typeof address === "string") return address.trim() || null;
+
+  const parts = [address.address, address.city, address.state, address.country]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.trim());
+
+  return parts[0] || parts[1] || null;
+}
+
+function getLocation(job?: JobDetails | null) {
+  const addressText = getAddressText(job?.address);
+  if (addressText) return addressText;
+
+  if (typeof job?.location === "string" && job.location.trim()) {
+    return job.location.trim();
+  }
+
+  const coordinates = isObject(job?.location) && Array.isArray(job.location.coordinates) ? job.location.coordinates : null;
+  if (coordinates && coordinates.length >= 2) {
+    const [lng, lat] = coordinates;
+    return `${lat}, ${lng}`;
+  }
+
+  return null;
+}
+
+function formatPrice(value?: string | number | null) {
+  if (value == null || value === "") return null;
+  const amount = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(amount)) return String(value);
+  return new Intl.NumberFormat("en-NZ", {
+    style: "currency",
+    currency: "NZD",
+    maximumFractionDigits: amount % 1 === 0 ? 0 : 2,
+  }).format(amount);
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat("en-NZ", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(parsed);
+}
+
+function clipText(value: string, maxLength: number) {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function buildShareDescription(job: {
+  description: string;
+  jobTypeName: string | null;
+  location: string | null;
+  priceLabel: string | null;
+  dateLabel: string | null;
+}) {
+  const facts = [job.jobTypeName, job.location, job.priceLabel, job.dateLabel].filter(Boolean);
+  const prefix = facts.length > 0 ? `${facts.join(" • ")}.` : "";
+  const body = job.description ? clipText(job.description.replace(/\s+/g, " ").trim(), 140) : "";
+  return clipText([prefix, body].filter(Boolean).join(" "), 180) || "View this job on Gumboot.";
+}
+
+function getPrimaryImage(job?: JobDetails | null) {
+  if (!job) return null;
+  if (Array.isArray(job.image)) {
+    for (const entry of job.image) {
+      const resolved = resolveMediaUrl(entry?.url);
+      if (resolved) return resolved;
+    }
+  }
+
+  if (job.job_type && typeof job.job_type !== "string" && "image" in job.job_type && Array.isArray(job.job_type.image)) {
+    for (const entry of job.job_type.image) {
+      if (typeof entry !== "string") continue;
+      const resolved = resolveMediaUrl(entry);
+      if (resolved) return resolved;
+    }
+  }
+
+  return null;
+}
+
+export async function requestJobDetails(jobId: string, userId?: string): Promise<JobDetailsResponse> {
+  const baseUrl = getBackendBaseUrl().replace(/\/+$/, "");
+  const url = new URL(`${baseUrl}/job_details`);
+  url.searchParams.set("jobId", jobId);
+  if (userId) url.searchParams.set("userId", userId);
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+  });
+
+  return {
+    statusCode: response.status,
+    body: await response.text(),
+    contentType: response.headers.get("content-type"),
+  };
+}
+
+export async function fetchJobDetailsEnvelope(jobId: string, userId?: string): Promise<JobDetailsEnvelope | null> {
+  const response = await requestJobDetails(jobId, userId);
+  if (!response.body) return null;
+
+  try {
+    return JSON.parse(response.body) as JobDetailsEnvelope;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchJobShareData(jobId: string): Promise<JobShareData | null> {
+  const payload = await fetchJobDetailsEnvelope(jobId);
+  if (!payload || payload.success === false) return null;
+
+  const job = normalizeJobDetails(payload);
+  if (!job) return null;
+
+  const title = getJobTitle(job);
+  const description = getJobDescription(job) || "View the full job details on Gumboot.";
+  const jobTypeName = getJobTypeName(job.job_type);
+  const location = getLocation(job);
+  const priceLabel = formatPrice(job.offered_price ?? job.price ?? null);
+  const dateLabel = formatDate(job.exp_date ?? job.date ?? null);
+  const posterName = getPosterName(job.userId);
+  const imageUrl = getPrimaryImage(job);
+  const url = getSiteUrl(`/jobs/${encodeURIComponent(job._id || job.id || jobId)}`);
+
+  return {
+    id: job._id || job.id || jobId,
+    title,
+    description,
+    shareDescription: buildShareDescription({ description, jobTypeName, location, priceLabel, dateLabel }),
+    priceLabel,
+    jobTypeName,
+    location,
+    dateLabel,
+    posterName,
+    imageUrl,
+    url,
+  };
+}

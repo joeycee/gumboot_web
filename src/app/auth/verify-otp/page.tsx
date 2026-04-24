@@ -461,9 +461,10 @@ export default function VerifyOtpPage() {
                 maxLength={6}
                 required
                 autoComplete="one-time-code"
+                data-testid="otp-code-input"
               />
 
-              <button className="vop-submit" disabled={loading || otp.length < 6} type="submit">
+              <button className="vop-submit" disabled={loading || otp.length < 6} type="submit" data-testid="otp-verify-button">
                 <span className="vop-btn-inner">
                   {loading && <span className="vop-spinner" />}
                   {loading ? "Verifying…" : "Verify and continue"}

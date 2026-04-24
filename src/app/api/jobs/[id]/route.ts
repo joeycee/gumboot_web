@@ -1,6 +1,5 @@
-import { request as httpRequest } from "node:http";
-import { request as httpsRequest } from "node:https";
 import { NextResponse } from "next/server";
+import { requestJobDetails } from "@/lib/jobShare";
 
 type RouteContext = {
   params: Promise<{
@@ -15,63 +14,12 @@ type BackendEnvelope = {
   body?: unknown;
 };
 
-function getBackendBaseUrl() {
-  const value = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (!value) {
-    throw new Error("NEXT_PUBLIC_API_BASE_URL is not configured");
-  }
-  return value;
-}
-
-function requestJobDetails(baseUrl: string, payload: { jobId: string; userId?: string }) {
-  const url = new URL("/api/job_details", baseUrl);
-  url.searchParams.set("jobId", payload.jobId);
-  if (payload.userId) {
-    url.searchParams.set("userId", payload.userId);
-  }
-  const body = JSON.stringify(payload);
-  const transport = url.protocol === "https:" ? httpsRequest : httpRequest;
-
-  return new Promise<{ statusCode: number; body: string; contentType: string | undefined }>((resolve, reject) => {
-    const req = transport(
-      {
-        protocol: url.protocol,
-        hostname: url.hostname,
-        port: url.port || undefined,
-        path: `${url.pathname}${url.search}`,
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(body),
-        },
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (chunk) => {
-          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        });
-        res.on("end", () => {
-          resolve({
-            statusCode: res.statusCode ?? 500,
-            body: Buffer.concat(chunks).toString("utf8"),
-            contentType: typeof res.headers["content-type"] === "string" ? res.headers["content-type"] : undefined,
-          });
-        });
-      }
-    );
-
-    req.on("error", reject);
-    req.write(body);
-    req.end();
-  });
-}
-
 export async function GET(_: Request, context: RouteContext) {
   try {
     const { id } = await context.params;
     const requestUrl = new URL(_.url);
     const userId = requestUrl.searchParams.get("userId") || undefined;
-    const response = await requestJobDetails(getBackendBaseUrl(), { jobId: id, userId });
+    const response = await requestJobDetails(id, userId);
 
     let parsed: BackendEnvelope | { raw: string };
     try {

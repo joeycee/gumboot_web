@@ -10,6 +10,7 @@ import {
   getNotificationJobId,
   getNotificationReadState,
   getNotificationJobStatusLabel,
+  getNotificationType,
   getNotificationTypeLabel,
   getNotifications,
   normalizeNotifications,
@@ -466,6 +467,10 @@ export default function NotificationsClient() {
                       className={`noti-row${unread ? " unread" : ""}`}
                       href={href}
                       key={item.notification?._id ?? `${href}-${index}`}
+                      data-testid="notification-row"
+                      data-notification-id={item.notification?._id ?? ""}
+                      data-notification-job-id={getNotificationJobId(item)}
+                      data-notification-type={getNotificationType(item)}
                       onClick={async (event) => {
                         event.preventDefault();
                         const nextHref = await resolveNotificationHref(item);

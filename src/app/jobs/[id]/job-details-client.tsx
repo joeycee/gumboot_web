@@ -17,6 +17,7 @@ import {
 } from "@/lib/applications";
 import { resolveChatMediaUrl, resolveUserImageUrl } from "@/lib/messages";
 import { deleteJob as deleteManagedJob } from "@/lib/jobManagement";
+import { buildJobAppLink, detectMobileDevice, getMobileStoreUrl, shouldAttemptMobileAppOpen } from "@/lib/mobileApp";
 import { extractCardsFromResponse, getSavedCards } from "@/lib/payments";
 import { buildPublicProfileHref } from "@/lib/publicProfiles";
 import { addReview } from "@/lib/reviews";
@@ -98,6 +99,64 @@ const styles = `
     font-family: 'Geist', sans-serif;
     color: var(--text);
     overflow-x: hidden;
+  }
+
+  .jdc-app-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 14px 16px;
+    background: rgba(32,151,189,0.12);
+    border: 1px solid rgba(32,151,189,0.28);
+    border-radius: 16px;
+    margin-bottom: 14px;
+  }
+  .jdc-app-banner-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  .jdc-app-banner-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(234,234,234,0.92);
+  }
+  .jdc-app-banner-sub {
+    font-size: 12px;
+    color: rgba(234,234,234,0.64);
+    line-height: 1.4;
+  }
+  .jdc-app-banner-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .jdc-app-banner-btn,
+  .jdc-app-banner-link {
+    appearance: none;
+    border: 0;
+    text-decoration: none;
+    cursor: pointer;
+    border-radius: 999px;
+    padding: 10px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    transition: transform 0.16s ease, opacity 0.16s ease, background 0.16s ease;
+  }
+  .jdc-app-banner-btn:hover,
+  .jdc-app-banner-link:hover {
+    transform: translateY(-1px);
+  }
+  .jdc-app-banner-btn {
+    background: #2097BD;
+    color: #071219;
+  }
+  .jdc-app-banner-link {
+    background: rgba(255,255,255,0.08);
+    color: rgba(234,234,234,0.88);
   }
 
   /* ── NAV ── */
@@ -604,6 +663,18 @@ const styles = `
   /* ── RESPONSIVE ── */
   @media (max-width: 520px) {
     .jdc-shell { padding: 18px 14px 60px; }
+    .jdc-app-banner {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .jdc-app-banner-actions {
+      width: 100%;
+    }
+    .jdc-app-banner-btn,
+    .jdc-app-banner-link {
+      flex: 1;
+      text-align: center;
+    }
     .jdc-title { font-size: 24px; }
     .jdc-meta { grid-template-columns: 1fr; }
     .jdc-meta-cell.wide { grid-column: 1; }
@@ -824,6 +895,7 @@ export default function JobDetailsClient({ id }: { id: string }) {
   const searchParams = useSearchParams();
   const { user: meUser } = useMe();
   const me = (meUser ?? null) as MeUser | null;
+  const [mobileDeviceKind, setMobileDeviceKind] = useState<"ios" | "android" | "other">("other");
   const [job, setJob] = useState<JobDetails | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
@@ -847,6 +919,43 @@ export default function JobDetailsClient({ id }: { id: string }) {
   );
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const appJobLink = useMemo(() => buildJobAppLink(id), [id]);
+  const mobileStoreUrl = useMemo(() => getMobileStoreUrl(mobileDeviceKind), [mobileDeviceKind]);
+
+  const attemptOpenInApp = useCallback(() => {
+    if (typeof window === "undefined" || !appJobLink) return false;
+    window.location.href = appJobLink;
+    return true;
+  }, [appJobLink]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setMobileDeviceKind(detectMobileDevice(window.navigator.userAgent));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!appJobLink) return;
+    if (searchParams.get("noapp") === "1") return;
+    if (!shouldAttemptMobileAppOpen(window.navigator.userAgent, window.location.href, document.referrer)) return;
+
+    const key = `gumboot_job_app_open_${id}`;
+    try {
+      if (window.sessionStorage.getItem(key) === "1") return;
+      window.sessionStorage.setItem(key, "1");
+    } catch {
+      // Ignore session storage failures and continue with a best-effort attempt.
+    }
+
+    const timer = window.setTimeout(() => {
+      attemptOpenInApp();
+    }, 160);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [appJobLink, attemptOpenInApp, id, searchParams]);
 
   const refreshJobDetails = useCallback(async () => {
     const qs = me?._id ? `?userId=${encodeURIComponent(me._id)}` : "";
@@ -1237,6 +1346,26 @@ export default function JobDetailsClient({ id }: { id: string }) {
         </div>
 
         <div className="jdc-shell">
+          {mobileDeviceKind !== "other" && appJobLink ? (
+            <div className="jdc-app-banner">
+              <div className="jdc-app-banner-copy">
+                <div className="jdc-app-banner-title">Open this job in the Gumboot app</div>
+                <div className="jdc-app-banner-sub">
+                  If Gumboot is installed on this phone, this shared listing can jump straight into the app.
+                </div>
+              </div>
+              <div className="jdc-app-banner-actions">
+                <button type="button" className="jdc-app-banner-btn" onClick={attemptOpenInApp}>
+                  Open app
+                </button>
+                {mobileStoreUrl ? (
+                  <a className="jdc-app-banner-link" href={mobileStoreUrl} target="_blank" rel="noreferrer">
+                    Get app
+                  </a>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           {/* ERROR */}
           {err && (
@@ -1802,6 +1931,7 @@ export default function JobDetailsClient({ id }: { id: string }) {
                                       className="jdc-apply-btn"
                                       style={{ width: "auto", padding: "11px 14px", fontSize: 11 }}
                                       disabled={applicationAction === `2-${application._id}`}
+                                      data-testid={`accept-application-${application._id ?? "unknown"}`}
                                       onClick={() => handleApplicationStatus(application, 2)}
                                     >
                                       {applicationAction === `2-${application._id}` ? "Accepting…" : "Accept"}
@@ -1811,6 +1941,7 @@ export default function JobDetailsClient({ id }: { id: string }) {
                                       className="jdc-apply-btn"
                                       style={{ width: "auto", padding: "11px 14px", fontSize: 11, background: "rgba(248,113,113,0.18)", color: "#fecaca" }}
                                       disabled={applicationAction === `4-${application._id}`}
+                                      data-testid={`decline-application-${application._id ?? "unknown"}`}
                                       onClick={() => handleApplicationStatus(application, 4)}
                                     >
                                       {applicationAction === `4-${application._id}` ? "Denying…" : "Decline"}

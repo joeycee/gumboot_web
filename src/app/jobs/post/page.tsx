@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { isClientE2ETestModeEnabled } from "@/lib/e2eTestMode";
 import { getJobTypes, JobType } from "@/lib/postJob";
 import { extractCardsFromResponse, getSavedCards } from "@/lib/payments";
 import { useMe } from "@/lib/useMe";
@@ -23,6 +24,11 @@ type MeUser = {
   firstname?: string;
   lastname?: string;
   verified_user?: string | number;
+};
+
+const E2E_TEST_ADDRESS_COORDS = {
+  lat: -36.8485,
+  lng: 174.7633,
 };
 
 const styles = `
@@ -1736,6 +1742,11 @@ export default function PostJobPage() {
                   value={addressLine}
                   onChange={(e) => {
                     setAddressLine(e.target.value);
+                    if (isClientE2ETestModeEnabled() && e.target.value.trim()) {
+                      setLat(E2E_TEST_ADDRESS_COORDS.lat);
+                      setLng(E2E_TEST_ADDRESS_COORDS.lng);
+                      return;
+                    }
                     setLat(null);
                     setLng(null);
                   }}

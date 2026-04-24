@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:e2e": "E2E_TEST_MODE=true NEXT_PUBLIC_E2E_TEST_MODE=true PLAYWRIGHT_BASE_URL=http://127.0.0.1:3000 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3000/api/e2e-backend PLAYWRIGHT_API_BASE_URL=http://127.0.0.1:3000/api/e2e-backend playwright test",
+    "test:e2e:headed": "E2E_TEST_MODE=true NEXT_PUBLIC_E2E_TEST_MODE=true PLAYWRIGHT_BASE_URL=http://127.0.0.1:3000 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3000/api/e2e-backend PLAYWRIGHT_API_BASE_URL=http://127.0.0.1:3000/api/e2e-backend playwright test --headed"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^6.1.0",
@@ -17,6 +19,7 @@
     "react-dom": "19.2.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

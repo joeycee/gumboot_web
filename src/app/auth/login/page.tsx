@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { sendLoginOtp } from "@/lib/auth";
+import { setAuthToken } from "@/lib/api";
+import { isClientE2ETestModeEnabled } from "@/lib/e2eTestMode";
 import { normalizeCountryCode, normalizePhoneNumber } from "@/lib/otp";
 
 const styles = `
@@ -500,6 +502,33 @@ export default function LoginPage() {
       if (!normalizedCountryCode || !normalizedPhone) {
         throw new Error("Enter a valid country code and mobile number.");
       }
+      if (isClientE2ETestModeEnabled()) {
+        const testResponse = await fetch("/api/test-login", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            phone: normalizedPhone,
+            country_code: normalizedCountryCode,
+          }),
+          cache: "no-store",
+        });
+
+        if (testResponse.ok) {
+          const testPayload = (await testResponse.json()) as {
+            body?: {
+              token?: string;
+            };
+          };
+          const token = testPayload.body?.token ?? "";
+          if (token) {
+            setAuthToken(token);
+            router.push(nextPath || "/");
+            return;
+          }
+        }
+      }
       const res = await sendLoginOtp({
         country_code: normalizedCountryCode,
         phone: normalizedPhone,
@@ -567,6 +596,7 @@ export default function LoginPage() {
                   onChange={(e) => setCountryCode(normalizeCountryCode(e.target.value))}
                   inputMode="tel"
                   aria-label="Country code"
+                  data-testid="login-country-code"
                 />
                 <input
                   className="lp-input"
@@ -576,10 +606,11 @@ export default function LoginPage() {
                   inputMode="tel"
                   required
                   aria-label="Phone number"
+                  data-testid="login-phone-number"
                 />
               </div>
 
-              <button className="lp-submit" disabled={loading} type="submit">
+              <button className="lp-submit" disabled={loading} type="submit" data-testid="login-send-code">
                 <span className="lp-submit-inner">
                   {loading && <span className="lp-spinner" />}
                   {loading ? "Sending code…" : "Send code"}
