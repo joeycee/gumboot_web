@@ -251,8 +251,8 @@ function MapJobsCanvas({
   const markerIcon = useMemo(() => {
     if (!apiIsLoaded || typeof window === "undefined" || !window.google?.maps) return null;
     return {
-      scaledSize: new window.google.maps.Size(22, 22),
-      anchor: new window.google.maps.Point(21, 21),
+      scaledSize: new window.google.maps.Size(28, 28),
+      anchor: new window.google.maps.Point(14, 14),
     };
   }, [apiIsLoaded]);
 
