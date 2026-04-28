@@ -56,6 +56,48 @@ test.describe("Production Flow Smoke Tests", () => {
     await expect(page).toHaveURL(/\/\?posted=1$/);
   });
 
+  test("mobile image upload step does not overflow horizontally", async ({ page, request }) => {
+    const ownerSession = await authenticateViaApi(request, getAccount("owner"));
+    const jobType = await getJobTypeForTests(request);
+    const tinyPng = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wn7Z4kAAAAASUVORK5CYII=",
+      "base64"
+    );
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setAuthToken(page, ownerSession.token);
+    await page.goto("/jobs/post");
+
+    await page.getByPlaceholder("e.g. Fix leaking kitchen tap").fill(uniqueJobTitle("Playwright mobile upload job"));
+    await page
+      .getByPlaceholder("Describe exactly what needs to be done. If you will provide anything for this job please state here.")
+      .fill("Playwright mobile overflow regression.");
+    await page.getByRole("button", { name: "Continue" }).click();
+
+    await page.getByText(jobType.name, { exact: true }).click();
+    await page.getByRole("button", { name: "Continue" }).click();
+
+    await page.getByPlaceholder("120").fill("180");
+    await page.getByRole("button", { name: "Continue" }).click();
+
+    await page.getByTestId("job-images-input").setInputFiles({
+      name: "tiny-upload-preview.png",
+      mimeType: "image/png",
+      buffer: tinyPng,
+    });
+
+    await expect(page.getByLabel("Selected images preview")).toBeVisible();
+    await expect(page.getByText("1 image selected", { exact: false })).toBeVisible();
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          const root = document.documentElement;
+          return root.scrollWidth - root.clientWidth;
+        });
+      })
+      .toBeLessThanOrEqual(1);
+  });
+
   test("worker can apply for a job", async ({ page, request }) => {
     const ownerSession = await authenticateViaApi(request, getAccount("owner"));
     const workerSession = await authenticateViaApi(request, getAccount("worker"));
@@ -72,6 +114,21 @@ test.describe("Production Flow Smoke Tests", () => {
     await expect(page).toHaveURL(new RegExp(`/jobs/${job.id}\\?applied=1$`));
     await expect(page.getByText("Your application status:", { exact: false })).toBeVisible();
     await expect(page.getByText("Applied", { exact: false })).toBeVisible();
+  });
+
+  test("job details page loads for a worker", async ({ page, request }) => {
+    const ownerSession = await authenticateViaApi(request, getAccount("owner"));
+    const workerSession = await authenticateViaApi(request, getAccount("worker"));
+    const job = await createJobViaApi(request, ownerSession, {
+      title: uniqueJobTitle("Playwright details job"),
+    });
+
+    await setAuthToken(page, workerSession.token);
+    await page.goto(`/jobs/${job.id}`);
+
+    await expect(page.getByRole("heading", { name: job.title })).toBeVisible();
+    await expect(page.getByText("Posted by", { exact: true })).toBeVisible();
+    await expect(page.getByText("The job id field is mandatory.")).not.toBeVisible();
   });
 
   test("job owner can accept application", async ({ page, request }) => {

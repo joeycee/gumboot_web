@@ -239,10 +239,32 @@ function MapJobsCanvas({
   const markerIcon = useMemo(() => {
     if (!apiIsLoaded || typeof window === "undefined" || !window.google?.maps) return null;
     return {
-      scaledSize: new window.google.maps.Size(50, 50),
-      anchor: new window.google.maps.Point(25, 25),
+      scaledSize: new window.google.maps.Size(42, 42),
+      anchor: new window.google.maps.Point(21, 21),
     };
   }, [apiIsLoaded]);
+
+  const buildMarkerIconUrl = useCallback(
+    (iconPath?: string) => {
+      const iconUrl = resolveIconUrl(iconPath);
+      const svg = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" viewBox="0 0 42 42">
+          <defs>
+            <filter id="marker-shadow" x="-50%" y="-50%" width="200%" height="200%">
+              <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="rgba(38,166,154,0.28)"/>
+            </filter>
+          </defs>
+          <g filter="url(#marker-shadow)">
+            <circle cx="21" cy="21" r="18" fill="#26A69A" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
+            <image href="${iconUrl}" x="10" y="10" width="22" height="22" preserveAspectRatio="xMidYMid meet"/>
+          </g>
+        </svg>
+      `.trim();
+
+      return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+    },
+    [resolveIconUrl]
+  );
 
   return (
     <div className="mj-map-wrap">
@@ -264,7 +286,7 @@ function MapJobsCanvas({
             position={{ lat: j.lat, lng: j.lng }}
             onClick={() => onSelect(j)}
             icon={{
-              url: resolveIconUrl(j.jobTypeIconPath),
+              url: buildMarkerIconUrl(j.jobTypeIconPath),
               ...(markerIcon ?? {}),
             }}
           />

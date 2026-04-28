@@ -429,7 +429,15 @@ async function handleRequest(request: Request, slug: string[]) {
   }
 
   if (path === "job_details") {
-    const jobId = url.searchParams.get("jobId") || "";
+    let body: Record<string, unknown> = {};
+    try {
+      body = (await parseBody(request)) as Record<string, unknown>;
+    } catch {
+      body = {};
+    }
+
+    const jobId = String(body.jobId ?? url.searchParams.get("jobId") ?? "");
+    if (!jobId) return fail("The job id field is mandatory.");
     const job = store.jobs[jobId];
     if (!job) return fail("Job not found.", 404);
     return ok(serializeJobDetails(store, job));

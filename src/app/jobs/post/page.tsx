@@ -252,6 +252,74 @@ const styles = `
     color: rgba(229,229,229,0.60);
     line-height: 1.6;
   }
+  .pj-upload-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    border: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(100%);
+    white-space: nowrap;
+  }
+  .pj-upload-shell {
+    width: 100%;
+    min-width: 0;
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+    border-radius: 16px;
+    border: 1px dashed rgba(38,166,154,0.42);
+    background:
+      radial-gradient(circle at top left, rgba(38,166,154,0.16), transparent 45%),
+      rgba(42,52,57,0.82);
+    cursor: pointer;
+    overflow: hidden;
+  }
+  .pj-upload-shell:focus-within {
+    box-shadow: 0 0 0 3px rgba(38,166,154,0.18);
+    border-color: rgba(38,166,154,0.58);
+  }
+  .pj-upload-copy {
+    min-width: 0;
+    display: grid;
+    gap: 6px;
+  }
+  .pj-upload-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: rgba(229,229,229,0.94);
+  }
+  .pj-upload-subcopy {
+    font-size: 12px;
+    line-height: 1.6;
+    color: rgba(229,229,229,0.68);
+    overflow-wrap: anywhere;
+  }
+  .pj-upload-meta {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(38,166,154,0.92);
+  }
+  .pj-upload-cta {
+    justify-self: start;
+    max-width: 100%;
+    border-radius: 999px;
+    border: 1px solid rgba(38,166,154,0.32);
+    background: linear-gradient(180deg, rgba(38,166,154,0.24), rgba(38,166,154,0.16));
+    color: #E5E5E5;
+    padding: 10px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    box-shadow: 0 10px 24px rgba(38,166,154,0.14);
+  }
   .pj-list {
     margin: 0;
     padding-left: 18px;
@@ -1510,8 +1578,22 @@ export default function PostJobPage() {
             <div className="pj-grid">
               <div className="pj-field">
                 <label className="pj-label">Add images</label>
+                <label className="pj-upload-shell" htmlFor="job-images-input" data-testid="job-images-upload-shell">
+                  <div className="pj-upload-copy">
+                    <span className="pj-upload-title">Upload photos from your phone</span>
+                    <span className="pj-upload-subcopy">
+                      Clear photos help workers understand the job faster. You can add multiple images, and this step is optional.
+                    </span>
+                    <span className="pj-upload-meta">
+                      {files.length > 0 ? `${files.length} image${files.length === 1 ? "" : "s"} selected` : "No images selected yet"}
+                    </span>
+                  </div>
+                  <span className="pj-upload-cta">Choose images</span>
+                </label>
                 <input
-                  className="pj-input"
+                  id="job-images-input"
+                  data-testid="job-images-input"
+                  className="pj-upload-input"
                   type="file"
                   multiple
                   accept="image/*"
