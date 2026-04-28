@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useCallback } from "react";
-import { APIProvider, Map, Marker, useApiIsLoaded } from "@vis.gl/react-google-maps";
+import { APIProvider, AdvancedMarker, Map, useApiIsLoaded } from "@vis.gl/react-google-maps";
 import { Job } from "@/lib/jobs";
 
 const styles = `
@@ -132,6 +132,24 @@ const styles = `
     background:
       radial-gradient(1200px 700px at 50% 20%, rgba(0,0,0,0), rgba(0,0,0,0.08) 70%);
   }
+  .mj-marker {
+    width: 42px;
+    height: 42px;
+    border-radius: 999px;
+    background: #26A69A;
+    border: 1px solid rgba(255,255,255,0.10);
+    box-shadow: 0 10px 24px rgba(38,166,154,0.28);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+  }
+  .mj-marker img {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+    display: block;
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.18));
+  }
 `;
 
 export function MapJobs({
@@ -236,36 +254,6 @@ function MapJobsCanvas({
 }) {
   const apiIsLoaded = useApiIsLoaded();
 
-  const markerIcon = useMemo(() => {
-    if (!apiIsLoaded || typeof window === "undefined" || !window.google?.maps) return null;
-    return {
-      scaledSize: new window.google.maps.Size(42, 42),
-      anchor: new window.google.maps.Point(21, 21),
-    };
-  }, [apiIsLoaded]);
-
-  const buildMarkerIconUrl = useCallback(
-    (iconPath?: string) => {
-      const iconUrl = resolveIconUrl(iconPath);
-      const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" viewBox="0 0 42 42">
-          <defs>
-            <filter id="marker-shadow" x="-50%" y="-50%" width="200%" height="200%">
-              <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="rgba(38,166,154,0.28)"/>
-            </filter>
-          </defs>
-          <g filter="url(#marker-shadow)">
-            <circle cx="21" cy="21" r="18" fill="#26A69A" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
-            <image href="${iconUrl}" x="10" y="10" width="22" height="22" preserveAspectRatio="xMidYMid meet"/>
-          </g>
-        </svg>
-      `.trim();
-
-      return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-    },
-    [resolveIconUrl]
-  );
-
   return (
     <div className="mj-map-wrap">
       {!apiIsLoaded ? (
@@ -281,15 +269,16 @@ function MapJobsCanvas({
         gestureHandling="greedy"
       >
         {markerJobs.map((j) => (
-          <Marker
+          <AdvancedMarker
             key={j.id}
             position={{ lat: j.lat, lng: j.lng }}
             onClick={() => onSelect(j)}
-            icon={{
-              url: buildMarkerIconUrl(j.jobTypeIconPath),
-              ...(markerIcon ?? {}),
-            }}
-          />
+          >
+            <div className="mj-marker">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={resolveIconUrl(j.jobTypeIconPath || j.imageUrl)} alt={j.jobTypeName || j.title || "Job type"} />
+            </div>
+          </AdvancedMarker>
         ))}
       </Map>
 
