@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useCallback } from "react";
-import { APIProvider, AdvancedMarker, Map, useApiIsLoaded } from "@vis.gl/react-google-maps";
+import { useMemo, useCallback, useEffect, useState } from "react";
+import { APIProvider, Map, Marker, useApiIsLoaded } from "@vis.gl/react-google-maps";
 import { Job } from "@/lib/jobs";
 
 const styles = `
@@ -132,24 +132,6 @@ const styles = `
     background:
       radial-gradient(1200px 700px at 50% 20%, rgba(0,0,0,0), rgba(0,0,0,0.08) 70%);
   }
-  .mj-marker {
-    width: 42px;
-    height: 42px;
-    border-radius: 999px;
-    background: #26A69A;
-    border: 1px solid rgba(255,255,255,0.10);
-    box-shadow: 0 10px 24px rgba(38,166,154,0.28);
-    display: grid;
-    place-items: center;
-    overflow: hidden;
-  }
-  .mj-marker img {
-    width: 22px;
-    height: 22px;
-    object-fit: contain;
-    display: block;
-    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.18));
-  }
 `;
 
 export function MapJobs({
@@ -253,6 +235,79 @@ function MapJobsCanvas({
   resolveIconUrl: (iconPath?: string) => string;
 }) {
   const apiIsLoaded = useApiIsLoaded();
+  const [markerIcons, setMarkerIcons] = useState<Record<string, string>>({});
+
+  const markerIcon = useMemo(() => {
+    if (!apiIsLoaded || typeof window === "undefined" || !window.google?.maps) return null;
+    return {
+      scaledSize: new window.google.maps.Size(42, 42),
+      anchor: new window.google.maps.Point(21, 21),
+    };
+  }, [apiIsLoaded]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function drawMarker(iconUrl: string) {
+      if (typeof window === "undefined") return iconUrl;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = 42;
+      canvas.height = 42;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return iconUrl;
+
+      ctx.clearRect(0, 0, 42, 42);
+      ctx.shadowColor = "rgba(38,166,154,0.28)";
+      ctx.shadowBlur = 12;
+      ctx.shadowOffsetY = 4;
+      ctx.beginPath();
+      ctx.arc(21, 21, 18, 0, Math.PI * 2);
+      ctx.fillStyle = "#26A69A";
+      ctx.fill();
+      ctx.shadowColor = "transparent";
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "rgba(255,255,255,0.10)";
+      ctx.stroke();
+
+      const image = new Image();
+      image.crossOrigin = "anonymous";
+
+      const loaded = await new Promise<boolean>((resolve) => {
+        image.onload = () => resolve(true);
+        image.onerror = () => resolve(false);
+        image.src = iconUrl;
+      });
+
+      if (loaded) {
+        ctx.drawImage(image, 10, 10, 22, 22);
+      }
+
+      try {
+        return canvas.toDataURL("image/png");
+      } catch {
+        return iconUrl;
+      }
+    }
+
+    (async () => {
+      const entries = await Promise.all(
+        markerJobs.map(async (job) => {
+          const iconUrl = resolveIconUrl(job.jobTypeIconPath || job.imageUrl);
+          const markerUrl = await drawMarker(iconUrl);
+          return [job.id, markerUrl] as const;
+        })
+      );
+
+      if (!cancelled) {
+        setMarkerIcons(Object.fromEntries(entries));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [markerJobs, resolveIconUrl]);
 
   return (
     <div className="mj-map-wrap">
@@ -269,16 +324,15 @@ function MapJobsCanvas({
         gestureHandling="greedy"
       >
         {markerJobs.map((j) => (
-          <AdvancedMarker
+          <Marker
             key={j.id}
             position={{ lat: j.lat, lng: j.lng }}
             onClick={() => onSelect(j)}
-          >
-            <div className="mj-marker">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={resolveIconUrl(j.jobTypeIconPath || j.imageUrl)} alt={j.jobTypeName || j.title || "Job type"} />
-            </div>
-          </AdvancedMarker>
+            icon={{
+              url: markerIcons[j.id] || resolveIconUrl(j.jobTypeIconPath || j.imageUrl),
+              ...(markerIcon ?? {}),
+            }}
+          />
         ))}
       </Map>
 
