@@ -21,6 +21,27 @@ export type Job = {
   raw: unknown;
 };
 
+function pickJobTypeIconPath(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const row = value as Record<string, unknown>;
+
+  if (Array.isArray(row.image) && row.image.length > 0) {
+    const first = row.image[0];
+    if (typeof first === "string" && first.trim()) return first.trim();
+  }
+
+  if (typeof row.image === "string" && row.image.trim()) {
+    return row.image.trim();
+  }
+
+  const candidates = [row.icon, row.iconPath, row.jobTypeIconPath, row.job_type_icon];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+
+  return undefined;
+}
+
 function toNumber(v: unknown): number | null {
   const n = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN;
   return Number.isFinite(n) ? n : null;
@@ -107,12 +128,11 @@ export function normalizeJobs(apiBody: unknown): Job[] {
       const lng = lng1 ?? lng2 ?? lng3 ?? lng4;
 
       const price = toNumber(row.price ?? row.job_price ?? row.amount ?? row.budget) ?? undefined;
-      const jobType = (row.job_type ?? null) as { name?: unknown; image?: unknown } | null;
+      const jobType = (row.job_type ?? null) as
+        | { name?: unknown; image?: unknown; icon?: unknown; iconPath?: unknown; jobTypeIconPath?: unknown; job_type_icon?: unknown }
+        | null;
       const ownerName = pickOwnerName(row.userId ?? row.user ?? row.owner);
-      const jobTypeIconPath =
-        Array.isArray(jobType?.image) && jobType.image.length > 0
-          ? String(jobType.image[0] ?? "")
-          : undefined;
+      const jobTypeIconPath = pickJobTypeIconPath(jobType) ?? pickJobTypeIconPath(row);
       const image = row.image;
       const imageUrl =
         Array.isArray(image) && image.length > 0 && typeof image[0] === "object" && image[0] !== null
