@@ -12,6 +12,8 @@ type MeUser = {
   firstname?: string;
   lastname?: string;
   verified_user?: string | number;
+  idproof?: string;
+  selfie?: string;
 };
 
 const styles = `
@@ -117,6 +119,11 @@ const styles = `
     background: rgba(229,229,229,0.05);
     color: rgba(229,229,229,0.62);
   }
+  .apply-warning {
+    border: 1px solid rgba(251,191,36,0.34);
+    background: rgba(251,191,36,0.12);
+    color: rgba(255,244,214,0.95);
+  }
   .apply-actions {
     display: flex;
     gap: 10px;
@@ -156,21 +163,19 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const profileSetupHref = `/auth/signup/profile-setup?mode=settings&next=${encodeURIComponent(`/jobs/${jobId}/apply`)}`;
+  const canOffer = Number(me?.verified_user ?? 0) === 1;
 
   useEffect(() => {
     if (meLoading) return;
     if (!me?._id) {
       router.replace(`/auth/login?next=${encodeURIComponent(`/jobs/${jobId}/apply`)}`);
-      return;
     }
-    if (Number(me.verified_user ?? 0) !== 1) {
-      router.replace(`/auth/signup/profile-setup?next=${encodeURIComponent(`/jobs/${jobId}/apply`)}`);
-    }
-  }, [jobId, me?._id, me?.verified_user, meLoading, router]);
+  }, [jobId, me?._id, meLoading, router]);
 
   const canSubmit = useMemo(
-    () => offerAmount.trim().length > 0 && message.trim().length > 0 && !submitting,
-    [message, offerAmount, submitting]
+    () => offerAmount.trim().length > 0 && message.trim().length > 0 && !submitting && canOffer,
+    [canOffer, message, offerAmount, submitting]
   );
 
   async function handleSubmit() {
@@ -182,8 +187,8 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
       setError("A short message is required.");
       return;
     }
-    if (Number(me?.verified_user ?? 0) !== 1) {
-      router.replace(`/auth/signup/profile-setup?next=${encodeURIComponent(`/jobs/${jobId}/apply`)}`);
+    if (!canOffer) {
+      setError("Upload your license/ID proof and selfie before sending an offer.");
       return;
     }
 
@@ -228,6 +233,12 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
             </p>
 
             <div className="apply-grid">
+              {me?._id && !canOffer ? (
+                <div className="apply-error apply-warning">
+                  You can still sign in to Gumboot, but you must upload your license/ID proof and selfie before you can send an offer on jobs.
+                </div>
+              ) : null}
+
               <label className="apply-field">
                 <span className="apply-label">Offer amount</span>
                 <input
@@ -257,8 +268,13 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
 
             <div className="apply-actions">
               <button className="apply-btn primary" type="button" disabled={!canSubmit} onClick={handleSubmit} data-testid="apply-send-offer">
-                {submitting ? "Sending..." : "Send offer"}
+                {submitting ? "Sending..." : canOffer ? "Send offer" : "Upload documents first"}
               </button>
+              {me?._id && !canOffer ? (
+                <Link className="apply-btn secondary" href={profileSetupHref}>
+                  Upload documents
+                </Link>
+              ) : null}
               <Link className="apply-btn secondary" href={`/jobs/${jobId}`}>
                 Cancel
               </Link>

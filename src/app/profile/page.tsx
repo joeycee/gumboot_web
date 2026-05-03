@@ -24,6 +24,8 @@ type ProfileData = {
   skill?: Skill[];
   tools?: Array<{ _id?: string; name?: string } | string>;
   verified_user?: number;
+  idproof?: string;
+  selfie?: string;
 };
 type ProfileResponse = {
   success: boolean;
@@ -304,6 +306,26 @@ const styles = `
     background: rgba(229,229,229,0.10);
     border-color: var(--line-strong);
   }
+  .pp-banner {
+    margin-top: 18px;
+    border-radius: 14px;
+    padding: 14px 16px;
+    border: 1px solid rgba(251,191,36,0.32);
+    background: rgba(251,191,36,0.10);
+    color: rgba(255,244,214,0.95);
+  }
+  .pp-banner-title {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    color: rgba(255,244,214,0.88);
+  }
+  .pp-banner-copy {
+    font-size: 13px;
+    line-height: 1.7;
+    color: rgba(255,244,214,0.92);
+  }
 
   .pp-stars { display: flex; gap: 2px; }
   .pp-star { font-size: 14px; line-height: 1; }
@@ -529,6 +551,7 @@ export default function ProfilePage() {
 
   const profile = data?.profiledata;
   const rating = data?.ratingdata;
+  const canOfferOnJobs = Number(profile?.verified_user ?? 0) === 1;
 
   const fullName = useMemo(
     () =>
@@ -655,7 +678,21 @@ export default function ProfilePage() {
                     <Link className="pp-link-btn" href="/profile/settings">
                       Settings
                     </Link>
+                    {!canOfferOnJobs ? (
+                      <Link className="pp-link-btn" href="/auth/signup/profile-setup?mode=settings&next=%2Fprofile">
+                        Upload documents
+                      </Link>
+                    ) : null}
                   </div>
+
+                  {!canOfferOnJobs ? (
+                    <div className="pp-banner">
+                      <div className="pp-banner-title">Documents needed before offering</div>
+                      <div className="pp-banner-copy">
+                        Your account can still sign in, but you must upload your license/ID proof and selfie before you can send offers on jobs.
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 

@@ -214,7 +214,7 @@ export default function ProfileSetupPage() {
       window.setTimeout(() => {
         router.push(
           isSettingsMode
-            ? "/profile/settings?saved=1"
+            ? nextPath || "/profile/settings?saved=1"
             : nextPath
               ? `/auth/signup/payment-setup?next=${encodeURIComponent(nextPath)}`
               : "/auth/signup/payment-setup"

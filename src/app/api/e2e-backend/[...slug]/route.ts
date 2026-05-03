@@ -11,6 +11,8 @@ type AccountRecord = {
   lastname: string;
   verified_user: number;
   role: number;
+  idproof?: string;
+  selfie?: string;
 };
 
 type AddressRecord = {
@@ -106,6 +108,8 @@ function getStore(): Store {
           lastname: "Owner",
           verified_user: 1,
           role: 1,
+          idproof: "/images/owner-idproof.jpg",
+          selfie: "/images/owner-selfie.jpg",
         }
       : null,
     workerConfig
@@ -119,6 +123,8 @@ function getStore(): Store {
           lastname: "Worker",
           verified_user: 1,
           role: 2,
+          idproof: "/images/worker-idproof.jpg",
+          selfie: "/images/worker-selfie.jpg",
         }
       : null,
   ].filter((account): account is AccountRecord => Boolean(account));
@@ -184,6 +190,8 @@ function serializeAccount(account: AccountRecord) {
     rating: 5,
     reviews: 3,
     image: "",
+    idproof: account.idproof ?? "",
+    selfie: account.selfie ?? "",
   };
 }
 

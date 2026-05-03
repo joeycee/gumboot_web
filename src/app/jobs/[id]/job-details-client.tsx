@@ -32,7 +32,15 @@ type UserValue =
   | string
   | { _id?: string; firstname?: string; lastname?: string; name?: string; image?: string; bio?: string; rating?: number; reviews?: number }
   | null | undefined;
-type MeUser = { _id?: string; firstname?: string; lastname?: string; role?: string | number };
+type MeUser = {
+  _id?: string;
+  firstname?: string;
+  lastname?: string;
+  role?: string | number;
+  verified_user?: string | number;
+  idproof?: string;
+  selfie?: string;
+};
 type JobImageValue = { _id?: string; url?: string } | null | undefined;
 
 type JobDetails = {
@@ -895,6 +903,7 @@ export default function JobDetailsClient({ id }: { id: string }) {
   const searchParams = useSearchParams();
   const { user: meUser } = useMe();
   const me = (meUser ?? null) as MeUser | null;
+  const canOfferOnJobs = Number(me?.verified_user ?? 0) === 1;
   const [mobileDeviceKind, setMobileDeviceKind] = useState<"ios" | "android" | "other">("other");
   const [job, setJob] = useState<JobDetails | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -907,7 +916,6 @@ export default function JobDetailsClient({ id }: { id: string }) {
   const [workflowMessage, setWorkflowMessage] = useState<string | null>(null);
   const [workflowError, setWorkflowError] = useState<string | null>(null);
   const [workflowBusy, setWorkflowBusy] = useState<string | null>(null);
-  const [beforeImages, setBeforeImages] = useState<File[]>([]);
   const [afterImages, setAfterImages] = useState<File[]>([]);
   const [reviewRating, setReviewRating] = useState("5");
   const [reviewComment, setReviewComment] = useState("");
@@ -1016,6 +1024,7 @@ export default function JobDetailsClient({ id }: { id: string }) {
   }, []);
 
   const isPoster = me?._id != null && me._id === getJobOwnerId(job);
+  const hasApplyAccess = isPoster || canOfferOnJobs;
   const canApply = Boolean(me?._id) && !isPoster;
   const allRequested = useMemo(() => {
     const raw = job?.jobRequestedData;
@@ -1210,25 +1219,24 @@ export default function JobDetailsClient({ id }: { id: string }) {
     }
   }
 
-  async function handleUploadImages(type: "1" | "2") {
-    const files = type === "1" ? beforeImages : afterImages;
+  async function handleUploadImages() {
+    const files = afterImages;
     if (!files.length) {
-      setWorkflowError(type === "1" ? "Choose at least one before-work image." : "Choose at least one after-work image.");
+      setWorkflowError("Choose at least one completed-work image.");
       return;
     }
 
-    setWorkflowBusy(`upload-${type}`);
+    setWorkflowBusy("upload-2");
     setWorkflowError(null);
     setWorkflowMessage(null);
     try {
       await uploadWorkerJobImages({
         jobId: job?._id || id,
-        type,
+        type: "2",
         images: files,
       });
-      if (type === "1") setBeforeImages([]);
-      if (type === "2") setAfterImages([]);
-      setWorkflowMessage(type === "1" ? "Before-work images uploaded." : "After-work images uploaded.");
+      setAfterImages([]);
+      setWorkflowMessage("Completed-work images uploaded.");
       await refreshJobDetails();
     } catch (nextError) {
       setWorkflowError(nextError instanceof Error ? nextError.message : "Failed to upload job images.");
@@ -1247,7 +1255,7 @@ export default function JobDetailsClient({ id }: { id: string }) {
 
     try {
       if (afterWorkImages.length === 0 && afterImages.length === 0) {
-        setWorkflowError("Upload after-work images before marking this job complete.");
+        setWorkflowError("Upload completed-work images before marking this job complete.");
         return;
       }
 
@@ -1267,7 +1275,7 @@ export default function JobDetailsClient({ id }: { id: string }) {
         job_id: jobId,
         job_status: 6,
       });
-      setWorkflowMessage("Job marked complete and after-work photos uploaded.");
+      setWorkflowMessage("Job marked complete and completed-work photos uploaded.");
       await Promise.all([loadApplications(), refreshJobDetails()]);
     } catch (nextError) {
       setWorkflowError(nextError instanceof Error ? nextError.message : "Failed to complete this job.");
@@ -1664,26 +1672,7 @@ export default function JobDetailsClient({ id }: { id: string }) {
 
                           <div className="jdc-upload-grid">
                             <label className="jdc-upload-field">
-                              <span className="jdc-upload-label">Upload before-work images</span>
-                              <input
-                                className="jdc-upload-input"
-                                type="file"
-                                accept="image/*"
-                                multiple
-                                onChange={(event) => setBeforeImages(Array.from(event.target.files ?? []))}
-                              />
-                            </label>
-                            <button
-                              type="button"
-                              className="jdc-inline-btn"
-                              disabled={workflowBusy === "upload-1"}
-                              onClick={() => handleUploadImages("1")}
-                            >
-                              {workflowBusy === "upload-1" ? "Uploading…" : "Upload before images"}
-                            </button>
-
-                            <label className="jdc-upload-field">
-                              <span className="jdc-upload-label">Upload after-work images</span>
+                              <span className="jdc-upload-label">Upload completed-work images</span>
                               <input
                                 className="jdc-upload-input"
                                 type="file"
@@ -1696,9 +1685,9 @@ export default function JobDetailsClient({ id }: { id: string }) {
                               type="button"
                               className="jdc-inline-btn"
                               disabled={workflowBusy === "upload-2"}
-                              onClick={() => handleUploadImages("2")}
+                              onClick={handleUploadImages}
                             >
-                              {workflowBusy === "upload-2" ? "Uploading…" : "Upload after images"}
+                              {workflowBusy === "upload-2" ? "Uploading…" : "Upload completed-work images"}
                             </button>
                           </div>
                         </>
@@ -1724,6 +1713,19 @@ export default function JobDetailsClient({ id }: { id: string }) {
                       Apply for this job
                     </button>
                     <p className="jdc-apply-note">You’ll be asked to sign in first, then we’ll take you to the offer screen.</p>
+                  </>
+                ) : !hasApplyAccess ? (
+                  <>
+                    <button
+                      type="button"
+                      className="jdc-apply-btn"
+                      onClick={() => router.push(`/auth/signup/profile-setup?mode=settings&next=${encodeURIComponent(`/jobs/${id}/apply`)}`)}
+                    >
+                      Upload documents to apply
+                    </button>
+                    <p className="jdc-apply-note">
+                      You can still sign in, but you must upload your license/ID proof and selfie before sending an offer.
+                    </p>
                   </>
                 ) : isPoster ? (
                   <>
