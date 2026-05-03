@@ -96,38 +96,39 @@ function getStore(): Store {
   const ownerConfig = configured.find((account) => account.key === "owner");
   const workerConfig = configured.find((account) => account.key === "worker");
 
-  const accounts = [
-    ownerConfig
-      ? {
-          id: "user_owner",
-          key: "owner" as const,
-          phone: ownerConfig.phone,
-          countryCode: ownerConfig.countryCode,
-          token: ownerConfig.token,
-          firstname: "Olive",
-          lastname: "Owner",
-          verified_user: 1,
-          role: 1,
-          idproof: "/images/owner-idproof.jpg",
-          selfie: "/images/owner-selfie.jpg",
-        }
-      : null,
-    workerConfig
-      ? {
-          id: "user_worker",
-          key: "worker" as const,
-          phone: workerConfig.phone,
-          countryCode: workerConfig.countryCode,
-          token: workerConfig.token,
-          firstname: "Wally",
-          lastname: "Worker",
-          verified_user: 1,
-          role: 2,
-          idproof: "/images/worker-idproof.jpg",
-          selfie: "/images/worker-selfie.jpg",
-        }
-      : null,
-  ].filter((account): account is AccountRecord => Boolean(account));
+  const accounts: AccountRecord[] = [];
+
+  if (ownerConfig) {
+    accounts.push({
+      id: "user_owner",
+      key: "owner",
+      phone: ownerConfig.phone,
+      countryCode: ownerConfig.countryCode,
+      token: ownerConfig.token,
+      firstname: "Olive",
+      lastname: "Owner",
+      verified_user: 1,
+      role: 1,
+      idproof: "/images/owner-idproof.jpg",
+      selfie: "/images/owner-selfie.jpg",
+    });
+  }
+
+  if (workerConfig) {
+    accounts.push({
+      id: "user_worker",
+      key: "worker",
+      phone: workerConfig.phone,
+      countryCode: workerConfig.countryCode,
+      token: workerConfig.token,
+      firstname: "Wally",
+      lastname: "Worker",
+      verified_user: 1,
+      role: 2,
+      idproof: "/images/worker-idproof.jpg",
+      selfie: "/images/worker-selfie.jpg",
+    });
+  }
 
   globalStore[STORE_KEY] = {
     initialized: true,
