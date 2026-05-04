@@ -1342,7 +1342,6 @@ export default function MessagesPage() {
             <div className="msg-panel-header">
               <p className="msg-kicker">Inbox</p>
               <h1 className="msg-title">Messages</h1>
-              <p className="msg-subtitle">Live chat via socket. Support has moved to its own page.</p>
               {socketError ? (
                 <div className="msg-status error">{socketError}</div>
               ) : (

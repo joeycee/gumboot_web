@@ -29,6 +29,17 @@ function normalizeMeUser(payload: unknown) {
   return root.body?.profiledata ?? root.body?.userDetail ?? root.body ?? null;
 }
 
+async function waitForVerifiedDocuments() {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const latestMe = normalizeMeUser(await fetchMe());
+    if (hasCompletedIdentityVerification(latestMe as MeUser | null)) {
+      return true;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 500));
+  }
+  return false;
+}
+
 const styles = `
   .apply-root * { box-sizing: border-box; }
   .apply-root {
@@ -127,6 +138,33 @@ const styles = `
     background: rgba(38,166,154,0.12);
     color: rgba(229,245,242,0.94);
   }
+  .apply-syncing {
+    display: grid;
+    justify-items: center;
+    gap: 12px;
+    text-align: center;
+    border: 1px solid rgba(38,166,154,0.28);
+    background: rgba(38,166,154,0.10);
+    color: rgba(229,245,242,0.94);
+  }
+  .apply-syncing-logo {
+    width: 52px;
+    height: 52px;
+    display: block;
+    animation: apply-spin 1s linear infinite;
+    filter: drop-shadow(0 8px 18px rgba(0,0,0,0.18));
+  }
+  .apply-syncing-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+  }
+  .apply-syncing-copy {
+    font-size: 13px;
+    line-height: 1.6;
+    max-width: 420px;
+  }
   .apply-note {
     border: 1px solid rgba(229,229,229,0.10);
     background: rgba(229,229,229,0.05);
@@ -170,6 +208,9 @@ const styles = `
     border: 1px solid rgba(229,229,229,0.12);
     text-decoration: none;
   }
+  @keyframes apply-spin {
+    to { transform: rotate(360deg); }
+  }
 `;
 
 export default function ApplyJobClient({ jobId }: { jobId: string }) {
@@ -180,6 +221,7 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
   const [offerAmount, setOfferAmount] = useState("");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [syncingDocuments, setSyncingDocuments] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const submitLockRef = useRef(false);
@@ -215,14 +257,20 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
 
     submitLockRef.current = true;
     setSubmitting(true);
+    setSyncingDocuments(false);
     setError(null);
     setSuccess(null);
     try {
       const latestMe = normalizeMeUser(await fetchMe());
       if (!hasCompletedIdentityVerification(latestMe as MeUser | null)) {
+        setSyncingDocuments(true);
+        const verified = await waitForVerifiedDocuments();
+        setSyncingDocuments(false);
         await refresh();
-        setError("Your documents are still finishing upload. Please wait a moment and try again.");
-        return;
+        if (!verified) {
+          setError("Your documents are still finishing upload. Please wait a moment and try again.");
+          return;
+        }
       }
 
       await applyToJob({
@@ -249,6 +297,7 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
       }
       setError(message);
     } finally {
+      setSyncingDocuments(false);
       submitLockRef.current = false;
       setSubmitting(false);
     }
@@ -306,12 +355,21 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
 
               {error ? <div className="apply-error">{error}</div> : null}
               {success ? <div className="apply-success">{success}</div> : null}
+              {syncingDocuments ? (
+                <div className="apply-success apply-syncing">
+                  <img className="apply-syncing-logo" src="/logo.png" alt="Gumboot loading" />
+                  <div className="apply-syncing-title">Uploading Documents</div>
+                  <div className="apply-syncing-copy">
+                    We&apos;re waiting for your selfie and ID upload to finish syncing. Your offer will send automatically as soon as your profile is ready.
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="apply-actions">
               {canOffer ? (
                 <button className="apply-btn primary" type="button" disabled={!canSubmit} onClick={handleSubmit} data-testid="apply-send-offer">
-                  {submitting ? "Sending..." : "Send offer"}
+                  {syncingDocuments ? "Uploading documents…" : submitting ? "Sending..." : "Send offer"}
                 </button>
               ) : null}
               {me?._id && !canOffer ? (
