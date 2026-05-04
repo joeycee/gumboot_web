@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { hasCompletedIdentityVerification } from "@/lib/accountStatus";
 import { applyToJob } from "@/lib/applications";
@@ -170,6 +170,7 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const submitLockRef = useRef(false);
   const profileSetupHref = `/auth/signup/profile-setup?mode=settings&next=${encodeURIComponent(`/jobs/${jobId}/apply`)}`;
   const canOffer = hasCompletedIdentityVerification(me);
 
@@ -186,6 +187,7 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
   );
 
   async function handleSubmit() {
+    if (submitLockRef.current) return;
     if (!offerAmount.trim()) {
       setError("Offer amount is required.");
       return;
@@ -199,6 +201,7 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
       return;
     }
 
+    submitLockRef.current = true;
     setSubmitting(true);
     setError(null);
     setSuccess(null);
@@ -217,8 +220,17 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
         router.replace(`/auth/login?next=${encodeURIComponent(`/jobs/${jobId}/apply`)}`);
         return;
       }
-      setError(nextError instanceof Error ? nextError.message : "Failed to send application.");
+      const message = nextError instanceof Error ? nextError.message : "Failed to send application.";
+      if (/already applied/i.test(message)) {
+        setSuccess("Application already sent.");
+        setTimeout(() => {
+          router.push(`/jobs/${jobId}?applied=1`);
+        }, 300);
+        return;
+      }
+      setError(message);
     } finally {
+      submitLockRef.current = false;
       setSubmitting(false);
     }
   }
@@ -278,9 +290,11 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
             </div>
 
             <div className="apply-actions">
-              <button className="apply-btn primary" type="button" disabled={!canSubmit} onClick={handleSubmit} data-testid="apply-send-offer">
-                {submitting ? "Sending..." : canOffer ? "Send offer" : "Upload documents first"}
-              </button>
+              {canOffer ? (
+                <button className="apply-btn primary" type="button" disabled={!canSubmit} onClick={handleSubmit} data-testid="apply-send-offer">
+                  {submitting ? "Sending..." : "Send offer"}
+                </button>
+              ) : null}
               {me?._id && !canOffer ? (
                 <Link className="apply-btn secondary" href={profileSetupHref}>
                   Upload documents
