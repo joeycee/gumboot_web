@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { hasCompletedIdentityVerification } from "@/lib/accountStatus";
 import { applyToJob } from "@/lib/applications";
@@ -18,6 +18,12 @@ type MeUser = {
   selfie?: string;
 };
 
+type ApplyDraft = {
+  offerAmount: string;
+  message: string;
+  awaitingVerification?: boolean;
+};
+
 function normalizeMeUser(payload: unknown) {
   if (!payload || typeof payload !== "object") return null;
   const root = payload as {
@@ -29,13 +35,50 @@ function normalizeMeUser(payload: unknown) {
   return root.body?.profiledata ?? root.body?.userDetail ?? root.body ?? null;
 }
 
+function getApplyDraftStorageKey(jobId: string) {
+  return `gumboot:apply-draft:${jobId}`;
+}
+
+function readApplyDraft(jobId: string): ApplyDraft | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(getApplyDraftStorageKey(jobId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ApplyDraft;
+    if (typeof parsed?.offerAmount !== "string" || typeof parsed?.message !== "string") {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeApplyDraft(jobId: string, draft: ApplyDraft) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(getApplyDraftStorageKey(jobId), JSON.stringify(draft));
+  } catch {
+    // Ignore storage restrictions in private browsing modes.
+  }
+}
+
+function clearApplyDraft(jobId: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(getApplyDraftStorageKey(jobId));
+  } catch {
+    // Ignore storage restrictions in private browsing modes.
+  }
+}
+
 async function waitForVerifiedDocuments() {
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  for (let attempt = 0; attempt < 24; attempt += 1) {
     const latestMe = normalizeMeUser(await fetchMe());
     if (hasCompletedIdentityVerification(latestMe as MeUser | null)) {
       return true;
     }
-    await new Promise((resolve) => window.setTimeout(resolve, 500));
+    await new Promise((resolve) => window.setTimeout(resolve, 1000));
   }
   return false;
 }
@@ -225,6 +268,8 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const submitLockRef = useRef(false);
+  const restoredDraftRef = useRef(false);
+  const autoResumeStartedRef = useRef(false);
   const profileSetupHref = `/auth/signup/profile-setup?mode=settings&next=${encodeURIComponent(`/jobs/${jobId}/apply`)}`;
   const canOffer = hasCompletedIdentityVerification(me);
 
@@ -235,23 +280,84 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
     }
   }, [jobId, me?._id, meLoading, router]);
 
+  useEffect(() => {
+    if (restoredDraftRef.current) return;
+    restoredDraftRef.current = true;
+    const draft = readApplyDraft(jobId);
+    if (!draft) return;
+    setOfferAmount(draft.offerAmount);
+    setMessage(draft.message);
+  }, [jobId]);
+
+  useEffect(() => {
+    if (!restoredDraftRef.current) return;
+    const trimmedOfferAmount = offerAmount.trim();
+    const trimmedMessage = message.trim();
+    if (!trimmedOfferAmount && !trimmedMessage) {
+      clearApplyDraft(jobId);
+      return;
+    }
+    const existingDraft = readApplyDraft(jobId);
+    writeApplyDraft(jobId, {
+      offerAmount,
+      message,
+      awaitingVerification: existingDraft?.awaitingVerification === true,
+    });
+  }, [jobId, message, offerAmount]);
+
   const canSubmit = useMemo(
     () => offerAmount.trim().length > 0 && message.trim().length > 0 && !submitting && canOffer,
     [canOffer, message, offerAmount, submitting]
   );
 
-  async function handleSubmit() {
+  const waitForProfileSync = useCallback(async (draft: ApplyDraft) => {
+    const trimmedOfferAmount = draft.offerAmount.trim();
+    const trimmedMessage = draft.message.trim();
+
+    submitLockRef.current = true;
+    setSubmitting(true);
+    setSyncingDocuments(true);
+    setError(null);
+    setSuccess(null);
+    writeApplyDraft(jobId, {
+      offerAmount: trimmedOfferAmount,
+      message: trimmedMessage,
+      awaitingVerification: true,
+    });
+
+    try {
+      const verified = await waitForVerifiedDocuments();
+      await refresh();
+      if (!verified) {
+        setError("Your documents are still finishing upload. We saved your offer while your profile catches up.");
+        return false;
+      }
+
+      writeApplyDraft(jobId, {
+        offerAmount: trimmedOfferAmount,
+        message: trimmedMessage,
+        awaitingVerification: false,
+      });
+      setSuccess("Documents ready. You can send your offer now.");
+      return true;
+    } finally {
+      setSyncingDocuments(false);
+      submitLockRef.current = false;
+      setSubmitting(false);
+    }
+  }, [jobId, refresh]);
+
+  const submitOfferDraft = useCallback(async (draft: ApplyDraft) => {
     if (submitLockRef.current) return;
-    if (!offerAmount.trim()) {
+    const trimmedOfferAmount = draft.offerAmount.trim();
+    const trimmedMessage = draft.message.trim();
+
+    if (!trimmedOfferAmount) {
       setError("Offer amount is required.");
       return;
     }
-    if (!message.trim()) {
+    if (!trimmedMessage) {
       setError("A short message is required.");
-      return;
-    }
-    if (!canOffer) {
-      setError("Upload your license/ID proof and selfie before sending an offer.");
       return;
     }
 
@@ -260,24 +366,24 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
     setSyncingDocuments(false);
     setError(null);
     setSuccess(null);
+    writeApplyDraft(jobId, draft);
     try {
       const latestMe = normalizeMeUser(await fetchMe());
       if (!hasCompletedIdentityVerification(latestMe as MeUser | null)) {
-        setSyncingDocuments(true);
-        const verified = await waitForVerifiedDocuments();
-        setSyncingDocuments(false);
-        await refresh();
-        if (!verified) {
-          setError("Your documents are still finishing upload. Please wait a moment and try again.");
-          return;
-        }
+        await waitForProfileSync({
+          offerAmount: trimmedOfferAmount,
+          message: trimmedMessage,
+          awaitingVerification: true,
+        });
+        return;
       }
 
       await applyToJob({
         jobid: jobId,
-        message: message.trim(),
-        offered_price: offerAmount.trim().replace(/[^\d.]/g, ""),
+        message: trimmedMessage,
+        offered_price: trimmedOfferAmount.replace(/[^\d.]/g, ""),
       });
+      clearApplyDraft(jobId);
       setSuccess("Application sent.");
       setTimeout(() => {
         router.push(`/jobs/${jobId}?applied=1`);
@@ -289,6 +395,7 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
       }
       const message = nextError instanceof Error ? nextError.message : "Failed to send application.";
       if (/already applied/i.test(message)) {
+        clearApplyDraft(jobId);
         setSuccess("Application already sent.");
         setTimeout(() => {
           router.push(`/jobs/${jobId}?applied=1`);
@@ -301,7 +408,37 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
       submitLockRef.current = false;
       setSubmitting(false);
     }
+  }, [jobId, router, waitForProfileSync]);
+
+  async function handleSubmit() {
+    if (!canOffer) {
+      writeApplyDraft(jobId, {
+        offerAmount,
+        message,
+        awaitingVerification: true,
+      });
+      setError("Upload your license/ID proof and selfie before sending an offer.");
+      return;
+    }
+
+    await submitOfferDraft({
+      offerAmount,
+      message,
+      awaitingVerification: false,
+    });
   }
+
+  useEffect(() => {
+    if (meLoading || !me?._id || autoResumeStartedRef.current) return;
+    const draft = readApplyDraft(jobId);
+    if (!draft?.awaitingVerification) return;
+    if (!draft.offerAmount.trim() || !draft.message.trim()) return;
+
+    autoResumeStartedRef.current = true;
+    setOfferAmount(draft.offerAmount);
+    setMessage(draft.message);
+    void waitForProfileSync(draft);
+  }, [jobId, me?._id, meLoading, waitForProfileSync]);
 
   return (
     <>
@@ -373,7 +510,17 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
                 </button>
               ) : null}
               {me?._id && !canOffer ? (
-                <Link className="apply-btn secondary" href={profileSetupHref}>
+                <Link
+                  className="apply-btn secondary"
+                  href={profileSetupHref}
+                  onClick={() =>
+                    writeApplyDraft(jobId, {
+                      offerAmount,
+                      message,
+                      awaitingVerification: true,
+                    })
+                  }
+                >
                   Upload documents
                 </Link>
               ) : null}

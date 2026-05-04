@@ -185,12 +185,12 @@ function normalizeProfileUser(payload: unknown) {
 }
 
 async function waitForDocumentVerificationReady() {
-  for (let attempt = 0; attempt < 6; attempt += 1) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
     const profileResponse = await me();
     if (hasCompletedIdentityVerification(normalizeProfileUser(profileResponse))) {
       return true;
     }
-    await new Promise((resolve) => window.setTimeout(resolve, 400));
+    await new Promise((resolve) => window.setTimeout(resolve, 750));
   }
   return false;
 }
