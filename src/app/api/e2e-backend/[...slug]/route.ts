@@ -3,12 +3,13 @@ import { getConfiguredE2ETestAccounts, isE2ETestModeEnabled } from "@/lib/e2eTes
 
 type AccountRecord = {
   id: string;
-  key: "owner" | "worker";
+  key: "owner" | "worker" | "signup";
   phone: string;
   countryCode: string;
   token: string;
   firstname: string;
   lastname: string;
+  email?: string;
   verified_user: number;
   role: number;
   idproof?: string;
@@ -79,6 +80,7 @@ type Store = {
   applications: Record<string, ApplicationRecord>;
   notifications: Record<string, NotificationRecord>;
   counters: {
+    account: number;
     address: number;
     job: number;
     application: number;
@@ -107,6 +109,7 @@ function getStore(): Store {
       token: ownerConfig.token,
       firstname: "Olive",
       lastname: "Owner",
+      email: "owner@example.com",
       verified_user: 1,
       role: 1,
       idproof: "/images/owner-idproof.jpg",
@@ -123,6 +126,7 @@ function getStore(): Store {
       token: workerConfig.token,
       firstname: "Wally",
       lastname: "Worker",
+      email: "worker@example.com",
       verified_user: 1,
       role: 2,
       idproof: "/images/worker-idproof.jpg",
@@ -142,7 +146,7 @@ function getStore(): Store {
     jobs: {},
     applications: {},
     notifications: {},
-    counters: { address: 1, job: 1, application: 1, notification: 1 },
+    counters: { account: 1, address: 1, job: 1, application: 1, notification: 1 },
   };
 
   return globalStore[STORE_KEY] as Store;
@@ -186,6 +190,7 @@ function serializeAccount(account: AccountRecord) {
     firstname: account.firstname,
     lastname: account.lastname,
     name: `${account.firstname} ${account.lastname}`.trim(),
+    email: account.email ?? "",
     verified_user: account.verified_user,
     role: account.role,
     rating: 5,
@@ -345,6 +350,76 @@ async function handleRequest(request: Request, slug: string[]) {
 
   if (path === "get_job_types") {
     return ok({ jobType: store.jobTypes });
+  }
+
+  if (path === "signup" && method === "POST") {
+    const body = (await parseBody(request)) as Record<string, unknown>;
+    const phone = String(body.phone ?? "").trim();
+    const countryCode = String(body.country_code ?? "+64").trim();
+    const key = `${countryCode}:${phone}`;
+    const existingAccount = store.accountsByPhone[key];
+
+    if (!phone) return fail("Phone number is required.");
+    if (existingAccount && existingAccount.verified_user === 1) return fail("Mobile number already exists");
+    if (existingAccount) {
+      delete store.accountsByToken[existingAccount.token];
+      delete store.accountsByPhone[key];
+    }
+
+    const id = nextId(store, "account");
+    const accountRecord: AccountRecord = {
+      id: `user_${id}`,
+      key: "signup",
+      phone,
+      countryCode,
+      token: `token_${id}`,
+      firstname: String(body.firstname ?? "").trim(),
+      lastname: String(body.lastname ?? "").trim(),
+      email: String(body.email ?? "").trim(),
+      verified_user: 0,
+      role: 1,
+      idproof: "",
+      selfie: "",
+    };
+
+    store.accountsByPhone[key] = accountRecord;
+    store.accountsByToken[accountRecord.token] = accountRecord;
+
+    return ok({ serviceSid: "e2e-service-sid", otp: "123456" });
+  }
+
+  if (path === "Login" && method === "POST") {
+    const body = (await parseBody(request)) as Record<string, unknown>;
+    const phone = String(body.phone ?? "").trim();
+    const countryCode = String(body.country_code ?? "+64").trim();
+    const accountByPhone = store.accountsByPhone[`${countryCode}:${phone}`];
+    if (!accountByPhone) return fail("Invalid phone number or country code", 404);
+    return ok({ serviceSid: "e2e-service-sid", otp: "123456" });
+  }
+
+  if (path === "otpVerify" && method === "POST") {
+    const body = (await parseBody(request)) as Record<string, unknown>;
+    const phone = String(body.phone ?? "").trim();
+    const countryCode = String(body.country_code ?? "+64").trim();
+    const otp = String(body.otp ?? body.code ?? "").trim();
+    const accountByPhone = store.accountsByPhone[`${countryCode}:${phone}`];
+
+    if (!accountByPhone) return fail("User does not exist", 404);
+    if (otp !== "123456") return fail("OTP is invalid or expired");
+
+    accountByPhone.verified_user = 1;
+
+    return ok({
+      userDetail: {
+        ...serializeAccount(accountByPhone),
+        token: accountByPhone.token,
+      },
+      token: accountByPhone.token,
+    });
+  }
+
+  if (path === "resend_otp" && method === "POST") {
+    return ok({ serviceSid: "e2e-service-sid", otp: "123456" });
   }
 
   if (path === "profile") {

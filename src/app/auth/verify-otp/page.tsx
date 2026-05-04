@@ -303,6 +303,8 @@ const styles = `
   .vop-back-link:hover { color: #2ec4b6; border-color: rgba(46,196,182,0.60); }
 `;
 
+const SIGNUP_DRAFT_KEY = "gumboot_signup_draft";
+
 export default function VerifyOtpPage() {
   const params = useSearchParams();
   const router = useRouter();
@@ -315,6 +317,7 @@ export default function VerifyOtpPage() {
     "";
   const flow = params.get("flow") ?? "login";
   const nextPath = params.get("next");
+  const signupSuccessPath = nextPath || "/?signup=1&needs_docs=1";
   const isTwilioDevMode = useLocalDevOtpBypassEnabled();
   const devOtp = isTwilioDevMode
     ? params.get("dev_otp") ?? "123456"
@@ -341,11 +344,10 @@ export default function VerifyOtpPage() {
           throw new Error("Use the development code shown on screen.");
         }
         setAuthToken("dev-local-token");
-        router.push(
-          nextPath
-            ? `/auth/signup/profile-setup?next=${encodeURIComponent(nextPath)}`
-            : "/auth/signup/profile-setup"
-        );
+        if (typeof window !== "undefined") {
+          window.sessionStorage.removeItem(SIGNUP_DRAFT_KEY);
+        }
+        router.push(signupSuccessPath);
         return;
       }
       if (!serviceSid) {
@@ -369,11 +371,12 @@ export default function VerifyOtpPage() {
       try {
         await me();
       } catch {}
+      if (flow === "signup" && typeof window !== "undefined") {
+        window.sessionStorage.removeItem(SIGNUP_DRAFT_KEY);
+      }
       router.push(
         flow === "signup"
-          ? nextPath
-            ? `/auth/signup/profile-setup?next=${encodeURIComponent(nextPath)}`
-            : "/auth/signup/profile-setup"
+          ? signupSuccessPath
           : nextPath || "/"
       );
     } catch (e: unknown) {
@@ -488,7 +491,13 @@ export default function VerifyOtpPage() {
             <p className="vop-back-row">
               Wrong number?{" "}
               <Link
-                href={flow === "signup" ? "/auth/signup" : "/auth/login"}
+                href={
+                  flow === "signup"
+                    ? nextPath
+                      ? `/auth/signup?next=${encodeURIComponent(nextPath)}`
+                      : "/auth/signup"
+                    : "/auth/login"
+                }
                 className="vop-back-link"
               >
                 Go back

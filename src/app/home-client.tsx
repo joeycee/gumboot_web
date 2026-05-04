@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Shell } from "@/components/Shell";
 import { MapJobs } from "@/components/MapJobs";
+import { hasCompletedIdentityVerification } from "@/lib/accountStatus";
 import { api } from "@/lib/api";
 import { Job, normalizeJobs } from "@/lib/jobs";
 import { useMe } from "@/lib/useMe";
@@ -53,6 +55,56 @@ const styles = `
     font-size: 12px;
   }
   .hc-footer strong { color: rgba(229,229,229,0.78); font-weight: 700; }
+  .hc-top-banner {
+    flex-shrink: 0;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(229,229,229,0.10);
+    background:
+      radial-gradient(circle at top right, rgba(251,191,36,0.18), rgba(0,0,0,0) 48%),
+      rgba(68,58,31,0.92);
+  }
+  .hc-top-banner-inner {
+    max-width: 1280px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .hc-top-banner-copy {
+    min-width: 0;
+  }
+  .hc-top-banner-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #fff0c2;
+    margin: 0 0 4px;
+  }
+  .hc-top-banner-text {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: rgba(255,244,214,0.92);
+  }
+  .hc-top-banner-link {
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.08);
+    color: #fff8df;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
   .hc-mobile-prompt {
     position: fixed;
     left: 14px;
@@ -652,7 +704,14 @@ function getLocationSummary(job: Job) {
 
 export default function HomeClient() {
   const router = useRouter();
-  useMe();
+  const searchParams = useSearchParams();
+  const { user: meUser } = useMe();
+  const me = (meUser ?? null) as {
+    _id?: string;
+    verified_user?: string | number;
+    idproof?: string;
+    selfie?: string;
+  } | null;
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [mode, setMode] = useState<ViewMode>("map");
@@ -664,6 +723,8 @@ export default function HomeClient() {
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [mobileDeviceKind, setMobileDeviceKind] = useState<MobileDeviceKind>("other");
   const [showMobileAppPrompt, setShowMobileAppPrompt] = useState(false);
+  const shouldPromptForDocuments = searchParams.get("needs_docs") === "1" && !hasCompletedIdentityVerification(me);
+  const docsSetupHref = "/auth/signup/profile-setup?mode=settings&next=%2F";
 
   const apiOrigin = useMemo(
     () => (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/api\/?$/, ""),
@@ -852,6 +913,21 @@ export default function HomeClient() {
       <style>{styles}</style>
 
       <div className="hc-root">
+        {shouldPromptForDocuments ? (
+          <div className="hc-top-banner">
+            <div className="hc-top-banner-inner">
+              <div className="hc-top-banner-copy">
+                <p className="hc-top-banner-title">One More Step Before Applying</p>
+                <p className="hc-top-banner-text">
+                  Your account is ready, but you need to upload your license/ID proof and selfie before you can apply for jobs.
+                </p>
+              </div>
+              <Link className="hc-top-banner-link" href={docsSetupHref}>
+                Add documents
+              </Link>
+            </div>
+          </div>
+        ) : null}
         {showMobileAppPrompt && mobilePrompt.href ? (
           <div className="hc-mobile-prompt" role="dialog" aria-label="Download the Gumboot app">
             <div className="hc-mobile-prompt-inner">

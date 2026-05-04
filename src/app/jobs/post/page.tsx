@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { hasCompletedIdentityVerification } from "@/lib/accountStatus";
 import { isClientE2ETestModeEnabled } from "@/lib/e2eTestMode";
 import { getJobTypes, JobType } from "@/lib/postJob";
 import { extractCardsFromResponse, getSavedCards } from "@/lib/payments";
@@ -24,6 +25,8 @@ type MeUser = {
   firstname?: string;
   lastname?: string;
   verified_user?: string | number;
+  idproof?: string;
+  selfie?: string;
 };
 
 const E2E_TEST_ADDRESS_COORDS = {
@@ -1124,6 +1127,7 @@ export default function PostJobPage() {
     return found?.name || "";
   }, [jobTypeId, jobTypes]);
   const clockHandDegrees = useMemo(() => getClockHandDegrees(exactTime), [exactTime]);
+  const hasIdentityVerification = hasCompletedIdentityVerification(me);
 
   function canProceed() {
     if (step === 0) return title.trim().length >= 3 && description.trim().length >= 10;
@@ -1171,7 +1175,7 @@ export default function PostJobPage() {
         return;
       }
 
-      if (Number(me?.verified_user ?? 0) !== 1) {
+      if (!hasIdentityVerification) {
         setPendingResumeSubmit(true);
         await cachePostJobImages(files);
         writePostJobDraft({
@@ -1348,7 +1352,7 @@ export default function PostJobPage() {
     lng,
     meLoading,
     me?._id,
-    me?.verified_user,
+    hasIdentityVerification,
     refreshSavedCardState,
     resumePath,
     router,
@@ -1421,23 +1425,21 @@ export default function PostJobPage() {
 
           {step === steps.length - 1 && readToken() && !cardCheckLoading && !hasSavedCard && (
             <div className="pj-banner">
-              A saved card is required before posting a job.
-              {" "}
+              A saved card is required before posting a job.{" "}
               <Link className="pj-banner-link" href={`/profile/payments?next=${encodeURIComponent(resumePath)}`}>
-                Add a card in Wallet & Payments
+                Click here
               </Link>
-              {" "}and we&apos;ll bring you back here to finish posting.
+              {" "}to go straight to Wallet & Payments, and we&apos;ll bring you back here to finish posting.
             </div>
           )}
 
-          {step === steps.length - 1 && readToken() && !meLoading && Number(me?.verified_user ?? 0) !== 1 && (
+          {step === steps.length - 1 && readToken() && !meLoading && !hasIdentityVerification && (
             <div className="pj-banner">
-              ID verification is required before posting a job.
-              {" "}
+              ID verification is required before posting a job.{" "}
               <Link className="pj-banner-link" href={`/auth/signup/profile-setup?next=${encodeURIComponent(resumePath)}`}>
-                Upload your ID documents
+                Click here
               </Link>
-              {" "}and we&apos;ll bring you back here to finish posting.
+              {" "}to go straight to ID verification, and we&apos;ll bring you back here to finish posting.
             </div>
           )}
 

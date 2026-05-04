@@ -239,7 +239,7 @@ export default function ProfileSetupPage() {
           <Link className="ps-back" href={isSettingsMode ? "/profile/settings" : "/auth/signup"}>
             Back
           </Link>
-          <p className="ps-eyebrow">{isSettingsMode ? "Account Verification" : "Signup • Step 2 of 3"}</p>
+          <p className="ps-eyebrow">{isSettingsMode ? "Account Verification" : "Optional Profile Setup"}</p>
           <h1 className="ps-title">{isSettingsMode ? "Profile and ID verification" : "Finish your profile"}</h1>
           <p className="ps-sub">
             There is one shared account now. Upload your ID documents here if you have them ready, or skip for now and
@@ -282,8 +282,10 @@ export default function ProfileSetupPage() {
                     className="ps-input"
                     type="file"
                     accept="image/*"
+                    capture="user"
                     onChange={(event) => setSelfiePhoto(event.target.files?.[0] ?? null)}
                   />
+                  <p className="ps-file-name">On supported phones and laptops, this will prompt the front camera first.</p>
                   <p className="ps-file-name">{formatFileName(selfiePhoto)}</p>
                 </div>
               </div>

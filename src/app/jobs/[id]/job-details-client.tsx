@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ApiEnvelope } from "@/lib/apiTypes";
 import { ApiError } from "@/lib/api";
+import { hasCompletedIdentityVerification } from "@/lib/accountStatus";
 import {
   fetchJobApplications,
   getApplicationJobId,
@@ -903,7 +904,7 @@ export default function JobDetailsClient({ id }: { id: string }) {
   const searchParams = useSearchParams();
   const { user: meUser } = useMe();
   const me = (meUser ?? null) as MeUser | null;
-  const canOfferOnJobs = Number(me?.verified_user ?? 0) === 1;
+  const canOfferOnJobs = hasCompletedIdentityVerification(me);
   const [mobileDeviceKind, setMobileDeviceKind] = useState<"ios" | "android" | "other">("other");
   const [job, setJob] = useState<JobDetails | null>(null);
   const [err, setErr] = useState<string | null>(null);

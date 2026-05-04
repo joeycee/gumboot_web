@@ -319,10 +319,10 @@ export default function PaymentSetupPage() {
       <style>{styles}</style>
       <div className="pay-root">
         <section className="pay-card">
-          <Link className="pay-back" href={isSettingsMode ? "/profile/settings" : "/auth/signup/profile-setup"}>
+          <Link className="pay-back" href={isSettingsMode ? "/profile/settings" : nextPath || "/profile"}>
             Back
           </Link>
-          <p className="pay-eyebrow">{isSettingsMode ? "Billing Setup" : "Signup • Step 3 of 3"}</p>
+          <p className="pay-eyebrow">{isSettingsMode ? "Billing Setup" : "Optional Payment Setup"}</p>
           <h1 className="pay-title">Payment setup</h1>
           <p className="pay-sub">
             Add a bank account here, and save cards through Stripe&apos;s secure hosted form so card details never pass through Gumboot.

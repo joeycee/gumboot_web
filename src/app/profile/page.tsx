@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { hasCompletedIdentityVerification } from "@/lib/accountStatus";
 import { getApiBaseUrl, getApiOrigin } from "@/lib/api";
 import { useLocalDevOtpBypassEnabled } from "@/lib/useLocalDevOtpBypass";
 
@@ -551,7 +552,7 @@ export default function ProfilePage() {
 
   const profile = data?.profiledata;
   const rating = data?.ratingdata;
-  const canOfferOnJobs = Number(profile?.verified_user ?? 0) === 1;
+  const canOfferOnJobs = hasCompletedIdentityVerification(profile);
 
   const fullName = useMemo(
     () =>
@@ -650,7 +651,7 @@ export default function ProfilePage() {
                     className="pp-avatar"
                   />
 
-                  {profile.verified_user === 1 && (
+                  {canOfferOnJobs && (
                     <div className="pp-verified-dot" title="Verified">
                       ✓
                     </div>

@@ -14,6 +14,61 @@ import {
 } from "./helpers";
 
 test.describe("Production Flow Smoke Tests", () => {
+  test("plain signup lands on home with a documents warning", async ({ page }) => {
+    const unique = String(Date.now()).slice(-6);
+
+    await page.goto("/auth/signup");
+    await page.getByTestId("signup-first-name").fill("Jamie");
+    await page.getByTestId("signup-last-name").fill("Starter");
+    await page.getByTestId("signup-email").fill(`jamie.${unique}@example.com`);
+    await page.getByTestId("signup-country-code").fill("+64");
+    await page.getByTestId("signup-phone-number").fill(`211${unique}`);
+    await page.getByTestId("signup-continue").click();
+
+    await expect(page).toHaveURL(/\/auth\/verify-otp/);
+    await page.getByTestId("otp-code-input").fill("123456");
+    await page.getByTestId("otp-verify-button").click();
+
+    await expect(page).toHaveURL(/\/\?signup=1&needs_docs=1$/);
+    await expect(page.getByText("One More Step Before Applying")).toBeVisible();
+    await expect(page.getByText("you need to upload your license/ID proof and selfie before you can apply for jobs", { exact: false })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Add documents" })).toBeVisible();
+  });
+
+  test("new signup keeps draft on OTP back and returns to the requested page", async ({ page }) => {
+    const unique = String(Date.now()).slice(-6);
+
+    await page.goto("/auth/signup?next=%2Fjobs%2Fpost");
+    await page.getByTestId("signup-first-name").fill("Casey");
+    await page.getByTestId("signup-last-name").fill("Builder");
+    await page.getByTestId("signup-email").fill(`casey.${unique}@example.com`);
+    await page.getByTestId("signup-country-code").fill("+64");
+    await page.getByTestId("signup-phone-number").fill(`210${unique}`);
+    await page.getByTestId("signup-continue").click();
+
+    await expect(page).toHaveURL(/\/auth\/verify-otp/);
+    await page.getByRole("link", { name: "Go back" }).click();
+
+    await expect(page).toHaveURL(/\/auth\/signup\?next=/);
+    await expect(page.getByTestId("signup-first-name")).toHaveValue("Casey");
+    await expect(page.getByTestId("signup-last-name")).toHaveValue("Builder");
+    await expect(page.getByTestId("signup-email")).toHaveValue(`casey.${unique}@example.com`);
+    await expect(page.getByTestId("signup-phone-number")).toHaveValue(`210${unique}`);
+
+    await page.getByTestId("signup-continue").click();
+    await expect(page).toHaveURL(/\/auth\/verify-otp/);
+
+    await page.getByTestId("otp-code-input").fill("123456");
+    await page.getByTestId("otp-verify-button").click();
+
+    await expect(page).toHaveURL(/\/jobs\/post$/);
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => window.localStorage.getItem("gumboot_token") || "");
+      })
+      .not.toBe("");
+  });
+
   test("user can log in", async ({ page }) => {
     await loginViaUi(page, getAccount("owner"));
     await expect(page).toHaveURL(/^(?!.*auth\/verify-otp).*/);

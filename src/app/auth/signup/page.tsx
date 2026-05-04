@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signup } from "@/lib/auth";
 import {
@@ -531,26 +531,76 @@ const styles = `
   }
 `;
 
+const SIGNUP_DRAFT_KEY = "gumboot_signup_draft";
+
+function readSignupDraft() {
+  if (typeof window === "undefined") {
+    return {
+      firstname: "",
+      lastname: "",
+      email: "",
+      phone: "",
+      country_code: "+64",
+    };
+  }
+
+  const raw = window.sessionStorage.getItem(SIGNUP_DRAFT_KEY);
+  if (!raw) {
+    return {
+      firstname: "",
+      lastname: "",
+      email: "",
+      phone: "",
+      country_code: "+64",
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<{
+      firstname: string;
+      lastname: string;
+      email: string;
+      phone: string;
+      country_code: string;
+    }>;
+    return {
+      firstname: parsed.firstname ?? "",
+      lastname: parsed.lastname ?? "",
+      email: parsed.email ?? "",
+      phone: parsed.phone ?? "",
+      country_code: parsed.country_code ?? "+64",
+    };
+  } catch {
+    return {
+      firstname: "",
+      lastname: "",
+      email: "",
+      phone: "",
+      country_code: "+64",
+    };
+  }
+}
+
 export default function SignupPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = searchParams.get("next");
   const isTwilioDevMode = useLocalDevOtpBypassEnabled();
-  const [form, setForm] = useState({
-    firstname: "",
-    lastname: "",
-    email: "",
-    phone: "",
-    country_code: "+64",
-  });
+  const [form, setForm] = useState(readSignupDraft);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.sessionStorage.setItem(SIGNUP_DRAFT_KEY, JSON.stringify(form));
+  }, [form]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     try {
       setLoading(true);
       setError(null);
+      const signupNextPath = nextPath || "/?signup=1&needs_docs=1";
       const payload = {
         ...form,
         country_code: normalizeCountryCode(form.country_code),
@@ -561,7 +611,7 @@ export default function SignupPage() {
       }
       if (isTwilioDevMode) {
         router.push(
-          `/auth/verify-otp?flow=signup&next=${encodeURIComponent(`/auth/signup/profile-setup${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`)}&phone=${encodeURIComponent(payload.phone)}&country_code=${encodeURIComponent(payload.country_code)}&dev_otp=123456`
+          `/auth/verify-otp?flow=signup&next=${encodeURIComponent(signupNextPath)}&phone=${encodeURIComponent(payload.phone)}&country_code=${encodeURIComponent(payload.country_code)}&dev_otp=123456`
         );
         return;
       }
@@ -576,7 +626,7 @@ export default function SignupPage() {
       }
       const devOtpQuery = devOtp ? `&dev_otp=${encodeURIComponent(devOtp)}` : "";
       router.push(
-        `/auth/verify-otp?flow=signup&next=${encodeURIComponent(`/auth/signup/profile-setup${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`)}&phone=${encodeURIComponent(payload.phone)}&country_code=${encodeURIComponent(payload.country_code)}&service_sid=${encodeURIComponent(serviceSid)}${devOtpQuery}`
+        `/auth/verify-otp?flow=signup&next=${encodeURIComponent(signupNextPath)}&phone=${encodeURIComponent(payload.phone)}&country_code=${encodeURIComponent(payload.country_code)}&service_sid=${encodeURIComponent(serviceSid)}${devOtpQuery}`
       );
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Signup failed";
@@ -634,6 +684,8 @@ export default function SignupPage() {
                     placeholder="Jane"
                     value={form.firstname}
                     onChange={(e) => setForm({ ...form, firstname: e.target.value })}
+                    autoComplete="given-name"
+                    data-testid="signup-first-name"
                     required
                   />
                 </div>
@@ -644,6 +696,8 @@ export default function SignupPage() {
                     placeholder="Smith"
                     value={form.lastname}
                     onChange={(e) => setForm({ ...form, lastname: e.target.value })}
+                    autoComplete="family-name"
+                    data-testid="signup-last-name"
                     required
                   />
                 </div>
@@ -657,6 +711,8 @@ export default function SignupPage() {
                   type="email"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  autoComplete="email"
+                  data-testid="signup-email"
                   required
                 />
               </div>
@@ -674,7 +730,9 @@ export default function SignupPage() {
                       })
                     }
                     inputMode="tel"
+                    autoComplete="tel-country-code"
                     aria-label="Country code"
+                    data-testid="signup-country-code"
                   />
                   <input
                     className="sp-input"
@@ -687,13 +745,15 @@ export default function SignupPage() {
                       })
                     }
                     inputMode="tel"
+                    autoComplete="tel"
                     required
                     aria-label="Phone number"
+                    data-testid="signup-phone-number"
                   />
                 </div>
               </div>
 
-              <button className="sp-submit" disabled={loading} type="submit">
+              <button className="sp-submit" disabled={loading} type="submit" data-testid="signup-continue">
                 <span className="sp-submit-inner">
                   {loading && <span className="sp-spinner" />}
                   {loading ? "Sending OTP…" : "Continue"}
@@ -709,7 +769,7 @@ export default function SignupPage() {
             </p>
             <p className="sp-login-row">
               Already have an account?{" "}
-              <Link href="/auth/login" className="sp-login-link">Sign in</Link>
+              <Link href={nextPath ? `/auth/login?next=${encodeURIComponent(nextPath)}` : "/auth/login"} className="sp-login-link">Sign in</Link>
             </p>
           </section>
 

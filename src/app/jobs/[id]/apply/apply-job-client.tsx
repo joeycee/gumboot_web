@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ApiError } from "@/lib/api";
+import { hasCompletedIdentityVerification } from "@/lib/accountStatus";
 import { applyToJob } from "@/lib/applications";
 import { useMe } from "@/lib/useMe";
 
@@ -124,6 +125,12 @@ const styles = `
     background: rgba(251,191,36,0.12);
     color: rgba(255,244,214,0.95);
   }
+  .apply-warning-link {
+    color: #fff2c7;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
   .apply-actions {
     display: flex;
     gap: 10px;
@@ -164,7 +171,7 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const profileSetupHref = `/auth/signup/profile-setup?mode=settings&next=${encodeURIComponent(`/jobs/${jobId}/apply`)}`;
-  const canOffer = Number(me?.verified_user ?? 0) === 1;
+  const canOffer = hasCompletedIdentityVerification(me);
 
   useEffect(() => {
     if (meLoading) return;
@@ -235,7 +242,11 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
             <div className="apply-grid">
               {me?._id && !canOffer ? (
                 <div className="apply-error apply-warning">
-                  You can still sign in to Gumboot, but you must upload your license/ID proof and selfie before you can send an offer on jobs.
+                  You can still sign in to Gumboot, but you must upload your license/ID proof and selfie before you can send an offer on jobs.{" "}
+                  <Link className="apply-warning-link" href={profileSetupHref}>
+                    Click here
+                  </Link>
+                  {" "}to go straight there.
                 </div>
               ) : null}
 
