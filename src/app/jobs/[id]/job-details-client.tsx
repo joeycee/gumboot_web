@@ -23,6 +23,7 @@ import { extractCardsFromResponse, getSavedCards } from "@/lib/payments";
 import { buildPublicProfileHref } from "@/lib/publicProfiles";
 import { addReview } from "@/lib/reviews";
 import { useMe } from "@/lib/useMe";
+import { extractBanksFromResponse, getBankAccounts } from "@/lib/payments";
 
 type JobTypeValue = string | { _id?: string; name?: string } | null | undefined;
 type AddressValue =
@@ -910,6 +911,7 @@ export default function JobDetailsClient({ id }: { id: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [hasSavedCard, setHasSavedCard] = useState(false);
+  const [hasSavedBank, setHasSavedBank] = useState(false);
   const [applications, setApplications] = useState<JobApplication[]>([]);
   const [applicationsLoading, setApplicationsLoading] = useState(false);
   const [applicationsError, setApplicationsError] = useState<string | null>(null);
@@ -1016,6 +1018,32 @@ export default function JobDetailsClient({ id }: { id: string }) {
         if (!cancelled) setHasSavedCard(extractCardsFromResponse(response).length > 0);
       } catch {
         if (!cancelled) setHasSavedCard(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const token =
+      typeof window === "undefined"
+        ? ""
+        : window.localStorage.getItem("gumboot_token") || window.localStorage.getItem("token") || "";
+
+    if (!token) {
+      setHasSavedBank(false);
+      return;
+    }
+
+    (async () => {
+      try {
+        const response = await getBankAccounts();
+        if (!cancelled) setHasSavedBank(extractBanksFromResponse(response).length > 0);
+      } catch {
+        if (!cancelled) setHasSavedBank(false);
       }
     })();
 
@@ -1255,6 +1283,11 @@ export default function JobDetailsClient({ id }: { id: string }) {
     setWorkflowMessage(null);
 
     try {
+      if (!hasSavedBank) {
+        router.push(`/auth/signup/payment-setup?setup=bank&required=1&next=${encodeURIComponent(`/jobs/${jobId}`)}`);
+        return;
+      }
+
       if (afterWorkImages.length === 0 && afterImages.length === 0) {
         setWorkflowError("Upload completed-work images before marking this job complete.");
         return;
@@ -1651,14 +1684,24 @@ export default function JobDetailsClient({ id }: { id: string }) {
                               </button>
                             ) : null}
                             {["3", "8", "9"].includes(currentWorkerStatus) ? (
-                              <button
-                                type="button"
-                                className="jdc-inline-btn success"
-                                disabled={workflowBusy === "status-6" || workflowBusy === "upload-complete"}
-                                onClick={handleWorkerCompleteWork}
-                              >
-                                {workflowBusy === "status-6" || workflowBusy === "upload-complete" ? "Saving…" : "Complete work"}
-                              </button>
+                              !hasSavedBank ? (
+                                <button
+                                  type="button"
+                                  className="jdc-inline-btn success"
+                                  onClick={() => router.push(`/auth/signup/payment-setup?setup=bank&required=1&next=${encodeURIComponent(`/jobs/${id}`)}`)}
+                                >
+                                  Add bank details
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="jdc-inline-btn success"
+                                  disabled={workflowBusy === "status-6" || workflowBusy === "upload-complete"}
+                                  onClick={handleWorkerCompleteWork}
+                                >
+                                  {workflowBusy === "status-6" || workflowBusy === "upload-complete" ? "Saving…" : "Complete work"}
+                                </button>
+                              )
                             ) : null}
                             {canChatAsWorker ? (
                               <button
@@ -1695,6 +1738,9 @@ export default function JobDetailsClient({ id }: { id: string }) {
                       ) : null}
                       {currentWorkerStatus === "6" ? (
                         <p className="jdc-apply-note">You have marked this job as completed. The employer still needs to confirm the finish.</p>
+                      ) : null}
+                      {!hasSavedBank && ["3", "8", "9"].includes(currentWorkerStatus) ? (
+                        <p className="jdc-apply-note">Add a bank account before marking this job complete so your payout can go to your wallet.</p>
                       ) : null}
                       {currentWorkerStatus === "7" ? (
                         <p className="jdc-apply-note">This job has been fully completed and confirmed.</p>

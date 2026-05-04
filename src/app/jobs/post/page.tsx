@@ -1220,7 +1220,7 @@ export default function PostJobPage() {
           pendingSubmit: true,
           hadImages: files.length > 0,
         });
-        router.push(`/profile/payments?next=${encodeURIComponent(resumePath)}`);
+        router.push(`/auth/signup/payment-setup?setup=card&required=1&next=${encodeURIComponent(resumePath)}`);
         return;
       }
 
@@ -1426,10 +1426,10 @@ export default function PostJobPage() {
           {step === steps.length - 1 && readToken() && !cardCheckLoading && !hasSavedCard && (
             <div className="pj-banner">
               A saved card is required before posting a job.{" "}
-              <Link className="pj-banner-link" href={`/profile/payments?next=${encodeURIComponent(resumePath)}`}>
+              <Link className="pj-banner-link" href={`/auth/signup/payment-setup?setup=card&required=1&next=${encodeURIComponent(resumePath)}`}>
                 Click here
               </Link>
-              {" "}to go straight to Wallet & Payments, and we&apos;ll bring you back here to finish posting.
+              {" "}to go straight to card setup, and we&apos;ll bring you back here to finish posting.
             </div>
           )}
 

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ApiError } from "@/lib/api";
 import { StripeSetupCardForm } from "@/components/StripeSetupCardForm";
-import { addBankAccount, extractCardsFromResponse, getSavedCards } from "@/lib/payments";
+import { addBankAccount, extractBanksFromResponse, extractCardsFromResponse, getBankAccounts, getSavedCards } from "@/lib/payments";
 
 type PaymentDraft = {
   bankAccountName: string;
@@ -229,6 +229,8 @@ export default function PaymentSetupPage() {
   const required = useMemo(() => searchParams.get("required") === "1", [searchParams]);
   const nextPath = useMemo(() => searchParams.get("next"), [searchParams]);
   const isSettingsMode = useMemo(() => searchParams.get("mode") === "settings", [searchParams]);
+  const setupMode = useMemo(() => (searchParams.get("setup") === "bank" ? "bank" : "card"), [searchParams]);
+  const isBankSetup = setupMode === "bank";
   const [form, setForm] = useState<PaymentDraft>({
     bankAccountName: "",
     bankAccountNumber: "",
@@ -239,6 +241,8 @@ export default function PaymentSetupPage() {
   const [saving, setSaving] = useState(false);
   const [hasSavedCard, setHasSavedCard] = useState(false);
   const [cardLoading, setCardLoading] = useState(true);
+  const [hasSavedBank, setHasSavedBank] = useState(false);
+  const [bankLoading, setBankLoading] = useState(true);
   const [cardResetKey, setCardResetKey] = useState(0);
 
   useEffect(() => {
@@ -263,34 +267,63 @@ export default function PaymentSetupPage() {
     };
   }, [cardResetKey]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      try {
+        setBankLoading(true);
+        const response = await getBankAccounts();
+        if (!mounted) return;
+        setHasSavedBank(extractBanksFromResponse(response).length > 0);
+      } catch {
+        if (!mounted) return;
+        setHasSavedBank(false);
+      } finally {
+        if (mounted) setBankLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   async function handleComplete(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
     setSuccess(null);
 
     const bankFilled = Boolean(hasBankValues(form));
-    if (required && !bankFilled && !hasSavedCard) {
-      setError("Bank or card details are required for this flow.");
-      return;
-    }
 
-    if (bankFilled && (!form.bankAccountName.trim() || !form.bankAccountNumber.trim() || !form.bankName.trim())) {
-      setError("Please complete all bank fields or leave them all blank.");
+    if (isBankSetup) {
+      if (required && !bankFilled && !hasSavedBank) {
+        setError("A bank account is required for this flow.");
+        return;
+      }
+
+      if (bankFilled && (!form.bankAccountName.trim() || !form.bankAccountNumber.trim() || !form.bankName.trim())) {
+        setError("Please complete all bank fields or leave them all blank.");
+        return;
+      }
+    } else if (required && !hasSavedCard) {
+      setError("A saved card is required for this flow.");
       return;
     }
 
     try {
       setSaving(true);
 
-      if (bankFilled) {
+      if (isBankSetup && bankFilled) {
         await addBankAccount({
           account_name: form.bankAccountName.trim(),
           account_number: form.bankAccountNumber.trim(),
           bank_name: form.bankName.trim(),
         });
+        setHasSavedBank(true);
       }
 
-      setSuccess("Payment details saved.");
+      setSuccess(isBankSetup ? "Bank details saved." : "Card setup confirmed.");
       setForm({
         bankAccountName: "",
         bankAccountNumber: "",
@@ -301,7 +334,11 @@ export default function PaymentSetupPage() {
       }, 500);
     } catch (nextError) {
       if (nextError instanceof ApiError && (nextError.status === 401 || nextError.status === 403)) {
-        router.replace(`/auth/login?next=${encodeURIComponent("/auth/signup/payment-setup")}`);
+        const returnPath =
+          typeof window === "undefined"
+            ? "/auth/signup/payment-setup"
+            : `${window.location.pathname}${window.location.search}`;
+        router.replace(`/auth/login?next=${encodeURIComponent(returnPath)}`);
         return;
       }
       setError(nextError instanceof Error ? nextError.message : "Unable to save payment details.");
@@ -322,82 +359,102 @@ export default function PaymentSetupPage() {
           <Link className="pay-back" href={isSettingsMode ? "/profile/settings" : nextPath || "/profile"}>
             Back
           </Link>
-          <p className="pay-eyebrow">{isSettingsMode ? "Billing Setup" : "Optional Payment Setup"}</p>
-          <h1 className="pay-title">Payment setup</h1>
+          <p className="pay-eyebrow">{isSettingsMode ? "Billing Setup" : isBankSetup ? "Worker Bank Setup" : "Card Setup"}</p>
+          <h1 className="pay-title">{isBankSetup ? "Bank account setup" : "Card setup"}</h1>
           <p className="pay-sub">
-            Add a bank account here, and save cards through Stripe&apos;s secure hosted form so card details never pass through Gumboot.
+            {isBankSetup
+              ? "Workers only need a bank account before marking a job complete or using wallet withdrawals."
+              : "Job posters only need a saved card before posting or confirming payment on a completed job."}
           </p>
 
           {error ? <div className="pay-error">{error}</div> : null}
           {success ? <div className="pay-success">{success}</div> : null}
           <div className="pay-note">
-            You can leave this screen without saving. If the current flow requires payment details, at least one complete section must be submitted.
+            {isBankSetup
+              ? "You can leave this screen without saving. If the current flow requires worker payouts, at least one bank account must be on file."
+              : "You can leave this screen without saving. If the current flow requires card billing, at least one saved card must be on file."}
           </div>
 
           <form onSubmit={handleComplete}>
-            <div className="pay-grid">
-              <section className="pay-panel">
-                <h2 className="pay-panel-title">Bank account</h2>
-                <div className="pay-field">
-                  <label className="pay-label">Account name</label>
-                  <input
-                    className="pay-input"
-                    value={form.bankAccountName}
-                    onChange={(e) => setForm({ ...form, bankAccountName: e.target.value })}
-                  />
-                </div>
-                <div className="pay-field">
-                  <label className="pay-label">Account number</label>
-                  <input
-                    className="pay-input"
-                    inputMode="numeric"
-                    value={form.bankAccountNumber}
-                    onChange={(e) => setForm({ ...form, bankAccountNumber: e.target.value })}
-                  />
-                </div>
-                <div className="pay-field">
-                  <label className="pay-label">Bank name</label>
-                  <input
-                    className="pay-input"
-                    value={form.bankName}
-                    onChange={(e) => setForm({ ...form, bankName: e.target.value })}
-                  />
-                </div>
-              </section>
-
-              <section className="pay-panel">
-                <h2 className="pay-panel-title">Saved card</h2>
-                <div className="pay-stripe">
-                  <div className="pay-note" style={{ marginBottom: 0 }}>
-                    {cardLoading
-                      ? "Checking your Stripe payment methods…"
-                      : hasSavedCard
-                        ? "A saved card is already on file. You can still add another secure card below."
-                        : "No saved card yet. Add one securely with Stripe if you want card billing ready now."}
+            {isBankSetup ? (
+              <div className="pay-grid" style={{ gridTemplateColumns: "1fr" }}>
+                <section className="pay-panel">
+                  <h2 className="pay-panel-title">Bank account</h2>
+                  <div className="pay-note" style={{ marginBottom: 12 }}>
+                    {bankLoading
+                      ? "Checking your saved bank accounts…"
+                      : hasSavedBank
+                        ? "A bank account is already on file. Add another one below if you want to update your payout details."
+                        : "No bank account saved yet. Add one now so completed jobs can be paid out to your wallet flow."}
                   </div>
-                  <div className="pay-stripe-shell">
-                    <StripeSetupCardForm
-                      buttonLabel="Save secure card"
-                      makeDefaultOnSuccess
-                      resetKey={cardResetKey}
-                      onSuccess={() => {
-                        setHasSavedCard(true);
-                        setCardResetKey((current) => current + 1);
-                        setSuccess("Card saved securely.");
-                      }}
-                      onError={(message) => setError(message)}
+                  <div className="pay-field">
+                    <label className="pay-label">Account name</label>
+                    <input
+                      className="pay-input"
+                      value={form.bankAccountName}
+                      onChange={(e) => setForm({ ...form, bankAccountName: e.target.value })}
                     />
                   </div>
-                </div>
-              </section>
-            </div>
+                  <div className="pay-field">
+                    <label className="pay-label">Account number</label>
+                    <input
+                      className="pay-input"
+                      inputMode="numeric"
+                      value={form.bankAccountNumber}
+                      onChange={(e) => setForm({ ...form, bankAccountNumber: e.target.value })}
+                    />
+                  </div>
+                  <div className="pay-field">
+                    <label className="pay-label">Bank name</label>
+                    <input
+                      className="pay-input"
+                      value={form.bankName}
+                      onChange={(e) => setForm({ ...form, bankName: e.target.value })}
+                    />
+                  </div>
+                </section>
+              </div>
+            ) : (
+              <div className="pay-grid" style={{ gridTemplateColumns: "1fr" }}>
+                <section className="pay-panel">
+                  <h2 className="pay-panel-title">Saved card</h2>
+                  <div className="pay-stripe">
+                    <div className="pay-note" style={{ marginBottom: 0 }}>
+                      {cardLoading
+                        ? "Checking your Stripe payment methods…"
+                        : hasSavedCard
+                          ? "A saved card is already on file. You can still add another secure card below."
+                          : "No saved card yet. Add one securely with Stripe so posting and customer payments are ready."}
+                    </div>
+                    <div className="pay-stripe-shell">
+                      <StripeSetupCardForm
+                        buttonLabel="Save secure card"
+                        makeDefaultOnSuccess
+                        resetKey={cardResetKey}
+                        onSuccess={() => {
+                          setHasSavedCard(true);
+                          setCardResetKey((current) => current + 1);
+                          setSuccess("Card saved securely.");
+                          if (nextPath) {
+                            window.setTimeout(() => router.push(nextPath), 500);
+                          }
+                        }}
+                        onError={(message) => setError(message)}
+                      />
+                    </div>
+                  </div>
+                </section>
+              </div>
+            )}
 
             <div className="pay-actions">
-              <button className="pay-btn pay-btn-secondary" onClick={handleSkip} type="button">
-                Skip for now
-              </button>
+              {!required ? (
+                <button className="pay-btn pay-btn-secondary" onClick={handleSkip} type="button">
+                  Skip for now
+                </button>
+              ) : null}
               <button className="pay-btn pay-btn-primary" disabled={saving} type="submit">
-                {saving ? "Saving…" : "Save details"}
+                {saving ? "Saving…" : isBankSetup ? "Save bank details" : "Continue"}
               </button>
             </div>
           </form>

@@ -298,11 +298,20 @@ export default function ProfileSettingsPage() {
                   </div>
                 </div>
                 <div className="pset-item">
-                  <div className="pset-item-title">Payment setup</div>
-                  <div className="pset-item-copy">Add or refresh bank and card details without storing drafts locally.</div>
+                  <div className="pset-item-title">Card setup for posting jobs</div>
+                  <div className="pset-item-copy">Save or refresh the card used when posting jobs and confirming completed work payments.</div>
                   <div className="pset-actions">
-                    <Link className="pset-linkbtn secondary" href="/auth/signup/payment-setup?mode=settings">
-                      Open billing setup
+                    <Link className="pset-linkbtn secondary" href="/auth/signup/payment-setup?mode=settings&setup=card">
+                      Open card setup
+                    </Link>
+                  </div>
+                </div>
+                <div className="pset-item">
+                  <div className="pset-item-title">Bank setup for worker payouts</div>
+                  <div className="pset-item-copy">Save the bank account needed before marking work complete and for wallet withdrawals.</div>
+                  <div className="pset-actions">
+                    <Link className="pset-linkbtn secondary" href="/auth/signup/payment-setup?mode=settings&setup=bank">
+                      Open bank setup
                     </Link>
                   </div>
                 </div>

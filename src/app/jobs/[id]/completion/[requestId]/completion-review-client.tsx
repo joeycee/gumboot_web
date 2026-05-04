@@ -682,8 +682,8 @@ export default function CompletionReviewClient({
                   <div className="jcr-state">
                     Add a saved card before confirming payment.
                     {" "}
-                    <Link href="/profile/payments" style={{ color: "#fff", fontWeight: 700 }}>
-                      Open wallet & payments
+                    <Link href={`/auth/signup/payment-setup?setup=card&required=1&next=${encodeURIComponent(`/jobs/${encodeURIComponent(job?._id || jobId)}/completion/${encodeURIComponent(requestId)}`)}`} style={{ color: "#fff", fontWeight: 700 }}>
+                      Open card setup
                     </Link>
                   </div>
                 ) : null}

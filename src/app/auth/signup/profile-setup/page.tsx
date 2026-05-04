@@ -215,9 +215,7 @@ export default function ProfileSetupPage() {
         router.push(
           isSettingsMode
             ? nextPath || "/profile/settings?saved=1"
-            : nextPath
-              ? `/auth/signup/payment-setup?next=${encodeURIComponent(nextPath)}`
-              : "/auth/signup/payment-setup"
+            : nextPath || "/profile"
         );
       }, 500);
     } catch (nextError) {
@@ -315,11 +313,7 @@ export default function ProfileSetupPage() {
                   className="ps-btn ps-btn-secondary"
                   disabled={saving}
                   onClick={() => {
-                    router.push(
-                      nextPath
-                        ? `/auth/signup/payment-setup?next=${encodeURIComponent(nextPath)}`
-                        : "/auth/signup/payment-setup"
-                    );
+                    router.push(nextPath || "/profile");
                   }}
                   type="button"
                 >
