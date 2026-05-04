@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { hasCompletedIdentityVerification } from "@/lib/accountStatus";
 import { applyToJob } from "@/lib/applications";
+import { me as fetchMe } from "@/lib/auth";
 import { useMe } from "@/lib/useMe";
 
 type MeUser = {
@@ -16,6 +17,17 @@ type MeUser = {
   idproof?: string;
   selfie?: string;
 };
+
+function normalizeMeUser(payload: unknown) {
+  if (!payload || typeof payload !== "object") return null;
+  const root = payload as {
+    body?: {
+      profiledata?: unknown;
+      userDetail?: unknown;
+    };
+  };
+  return root.body?.profiledata ?? root.body?.userDetail ?? root.body ?? null;
+}
 
 const styles = `
   .apply-root * { box-sizing: border-box; }
@@ -162,7 +174,7 @@ const styles = `
 
 export default function ApplyJobClient({ jobId }: { jobId: string }) {
   const router = useRouter();
-  const { user, loading: meLoading } = useMe();
+  const { user, loading: meLoading, refresh } = useMe();
   const me = (user ?? null) as MeUser | null;
 
   const [offerAmount, setOfferAmount] = useState("");
@@ -206,6 +218,13 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
     setError(null);
     setSuccess(null);
     try {
+      const latestMe = normalizeMeUser(await fetchMe());
+      if (!hasCompletedIdentityVerification(latestMe as MeUser | null)) {
+        await refresh();
+        setError("Your documents are still finishing upload. Please wait a moment and try again.");
+        return;
+      }
+
       await applyToJob({
         jobid: jobId,
         message: message.trim(),

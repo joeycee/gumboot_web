@@ -4,7 +4,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ApiError } from "@/lib/api";
+import { hasCompletedIdentityVerification } from "@/lib/accountStatus";
 import { submitIdVerification, updateProfile } from "@/lib/account";
+import { me } from "@/lib/auth";
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
@@ -171,6 +173,28 @@ function formatFileName(file: File | null) {
   return `${file.name} (${Math.round(file.size / 1024)} KB)`;
 }
 
+function normalizeProfileUser(payload: unknown) {
+  if (!payload || typeof payload !== "object") return null;
+  const root = payload as {
+    body?: {
+      profiledata?: unknown;
+      userDetail?: unknown;
+    };
+  };
+  return root.body?.profiledata ?? root.body?.userDetail ?? root.body ?? null;
+}
+
+async function waitForDocumentVerificationReady() {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const profileResponse = await me();
+    if (hasCompletedIdentityVerification(normalizeProfileUser(profileResponse))) {
+      return true;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 400));
+  }
+  return false;
+}
+
 export default function ProfileSetupPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -208,6 +232,7 @@ export default function ProfileSetupPage() {
           selfie: selfiePhoto,
           idproof: idPhoto,
         });
+        await waitForDocumentVerificationReady();
       }
 
       setSuccess(selfiePhoto && idPhoto ? "ID verification details saved." : "You can finish ID verification later.");
