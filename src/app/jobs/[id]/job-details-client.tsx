@@ -17,11 +17,12 @@ import {
   type JobApplication,
 } from "@/lib/applications";
 import { resolveChatMediaUrl, resolveUserImageUrl } from "@/lib/messages";
-import { deleteJob as deleteManagedJob } from "@/lib/jobManagement";
+import { cancelJob as cancelManagedJob, deleteJob as deleteManagedJob } from "@/lib/jobManagement";
 import { buildJobAppLink, detectMobileDevice, getMobileStoreUrl, shouldAttemptMobileAppOpen } from "@/lib/mobileApp";
-import { extractCardsFromResponse, getSavedCards } from "@/lib/payments";
+import { createAcceptancePaymentIntent, extractCardsFromResponse, getSavedCards } from "@/lib/payments";
 import { buildPublicProfileHref } from "@/lib/publicProfiles";
 import { addReview } from "@/lib/reviews";
+import { stripePromise } from "@/lib/stripe";
 import { useMe } from "@/lib/useMe";
 import { extractBanksFromResponse, getBankAccounts } from "@/lib/payments";
 
@@ -76,6 +77,36 @@ const STATUS_LABELS: Record<string, string> = {
   "4": "Rejected", "5": "Cancelled", "6": "Completed",
   "7": "Ended", "8": "Tracking Started", "9": "Reached Location",
 };
+
+function getWorkerPaymentNote(status: string) {
+  if (["2", "3", "6"].includes(status)) {
+    return "You’ll be paid once the customer confirms the job is complete.";
+  }
+  if (status === "7") {
+    return "Payment released. This job has been completed.";
+  }
+  return "";
+}
+
+function getEmployerCancellationWarning() {
+  return [
+    "A $5 cancellation fee may apply after a job has been accepted and payment has been secured.",
+    "",
+    "You’ll be refunded the job amount minus a $5 cancellation fee.",
+    "",
+    "Do you want to cancel this job?",
+  ].join("\n");
+}
+
+function getWorkerCancellationWarning() {
+  return [
+    "A $5 cancellation fee may apply after a job has been accepted and payment has been secured.",
+    "",
+    "Cancelling after accepting may result in a $5 cancellation fee.",
+    "",
+    "Do you want to cancel this job?",
+  ].join("\n");
+}
 const STATUS_HUE: Record<string, string> = {
   "0": "#4ADE80", "1": "#60A5FA", "2": "#A78BFA", "3": "#FBBF24",
   "4": "#F87171", "5": "#94A3B8", "6": "#4ADE80",
@@ -1202,12 +1233,39 @@ export default function JobDetailsClient({ id }: { id: string }) {
     setApplicationsError(null);
     setApplicationMessage(null);
     try {
+      if (status === 2) {
+        const paymentResponse = await createAcceptancePaymentIntent({
+          jobId,
+          jobRequestedId: applicationId,
+        });
+        const paymentBody = paymentResponse.body;
+        if (!paymentBody?.alreadyHeld) {
+          const clientSecret = paymentBody?.clientSecret;
+          if (!clientSecret) {
+            throw new Error("Missing payment confirmation details.");
+          }
+
+          const stripe = await stripePromise;
+          if (!stripe) {
+            throw new Error("Stripe is not configured for this environment.");
+          }
+
+          const result = await stripe.confirmCardPayment(clientSecret);
+          if (result.error) {
+            throw new Error(result.error.message || "We couldn't secure your payment just yet. Please try again.");
+          }
+          if (!["succeeded", "processing"].includes(String(result.paymentIntent?.status ?? ""))) {
+            throw new Error(`Payment status: ${result.paymentIntent?.status || "unknown"}`);
+          }
+        }
+      }
+
       await updateJobApplicationStatus({
         jobRequested_id: applicationId,
         job_id: jobId,
         job_status: status,
       });
-      setApplicationMessage(status === 2 ? "Application accepted." : "Application declined.");
+      setApplicationMessage(status === 2 ? "Payment secured" : "Application declined.");
       await Promise.all([loadApplications(), refreshJobDetails()]);
     } catch (nextError) {
       if (nextError instanceof ApiError && (nextError.status === 401 || nextError.status === 403)) {
@@ -1220,22 +1278,41 @@ export default function JobDetailsClient({ id }: { id: string }) {
     }
   }
 
-  async function handleLifecycleStatus(nextStatus: 3 | 6 | 7 | 8 | 9) {
+  async function handleLifecycleStatus(nextStatus: 3 | 5 | 6 | 7 | 8 | 9) {
     const request = isPoster ? posterActiveRequest : currentWorkerRequest;
     const requestId = request?._id ?? "";
     const jobId = job?._id || id;
     if (!requestId || !jobId) return;
 
+    if (nextStatus === 5 && typeof window !== "undefined" && !window.confirm(getWorkerCancellationWarning())) {
+      return;
+    }
+
     setWorkflowBusy(`status-${nextStatus}`);
     setWorkflowError(null);
     setWorkflowMessage(null);
     try {
-      await updateJobLifecycleStatus({
+      const response = await updateJobLifecycleStatus({
         jobRequested_id: requestId,
         job_id: jobId,
         job_status: nextStatus,
       });
-      setWorkflowMessage(STATUS_LABELS[String(nextStatus)] ? `${STATUS_LABELS[String(nextStatus)]} updated.` : "Job status updated.");
+
+      const cancellationCharge = response.body?.cancellationCharge as
+        | { cancellationFeeStatus?: string; refundAmount?: number; refundAmountMinor?: number }
+        | undefined;
+
+      if (nextStatus === 5) {
+        if (cancellationCharge?.cancellationFeeStatus === "due") {
+          setWorkflowMessage("Job cancelled. A $5 cancellation fee has been recorded on your account.");
+        } else if (cancellationCharge?.cancellationFeeStatus === "collected") {
+          setWorkflowMessage("Job cancelled. A $5 cancellation fee was applied.");
+        } else {
+          setWorkflowMessage("Job cancelled.");
+        }
+      } else {
+        setWorkflowMessage(STATUS_LABELS[String(nextStatus)] ? `${STATUS_LABELS[String(nextStatus)]} updated.` : "Job status updated.");
+      }
       await Promise.all([loadApplications(), refreshJobDetails()]);
     } catch (nextError) {
       if (nextError instanceof ApiError && (nextError.status === 401 || nextError.status === 403)) {
@@ -1371,6 +1448,40 @@ export default function JobDetailsClient({ id }: { id: string }) {
         return;
       }
       setDeleteError(nextError instanceof Error ? nextError.message : "Unable to delete this job.");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
+  async function handleOwnerCancelJob() {
+    const jobId = job?._id || id;
+    if (!jobId || deleteBusy) return;
+    if (typeof window !== "undefined" && !window.confirm(getEmployerCancellationWarning())) {
+      return;
+    }
+
+    setDeleteBusy(true);
+    setDeleteError(null);
+    setWorkflowMessage(null);
+    try {
+      const response = await cancelManagedJob(jobId);
+      const cancellationCharge = response.body?.cancellationCharge as
+        | { cancellationFeeStatus?: string; refundAmount?: number }
+        | undefined;
+
+      if (cancellationCharge?.cancellationFeeStatus === "collected") {
+        setWorkflowMessage("Job cancelled. Your refund will be the job amount minus a $5 cancellation fee.");
+      } else {
+        setWorkflowMessage("Job cancelled.");
+      }
+      await refreshJobDetails();
+      router.push("/jobs/manage?cancelled=1");
+    } catch (nextError) {
+      if (nextError instanceof ApiError && (nextError.status === 401 || nextError.status === 403)) {
+        router.replace(`/auth/login?next=${encodeURIComponent(`/jobs/${id}`)}`);
+        return;
+      }
+      setDeleteError(nextError instanceof Error ? nextError.message : "Unable to cancel this job.");
     } finally {
       setDeleteBusy(false);
     }
@@ -1615,7 +1726,7 @@ export default function JobDetailsClient({ id }: { id: string }) {
                   <div style={{ marginBottom: 14, display: "grid", gap: 10 }}>
                     {!hasSavedCard ? (
                       <div style={{ border: "1px solid rgba(255,255,255,0.10)", borderRadius: 14, background: "rgba(255,255,255,0.04)", padding: 14, fontSize: 13, color: "var(--sub)", lineHeight: 1.6 }}>
-                        Add a saved card before confirming payment for this completed job.
+                        Add a saved card before you can release payment for this completed job.
                         {" "}
                         <Link href="/profile/payments" style={{ color: "#EAEAEA", fontWeight: 600 }}>
                           Open wallet & payments
@@ -1624,7 +1735,7 @@ export default function JobDetailsClient({ id }: { id: string }) {
                     ) : (
                       <div style={{ border: "1px solid rgba(255,255,255,0.10)", borderRadius: 14, background: "rgba(255,255,255,0.04)", padding: 14, display: "grid", gap: 10 }}>
                         <div style={{ fontSize: 13, color: "var(--sub)", lineHeight: 1.6 }}>
-                          The worker has marked this job completed. Open the completed-work page to inspect the uploaded proof, message the worker if needed, and then confirm payment with Stripe.
+                          The worker has marked this job complete. Open the completed-work page to review the work, message the worker if needed, and then release payment.
                         </div>
                         <Link
                           href={`/jobs/${encodeURIComponent(job?._id || id)}/completion/${encodeURIComponent(posterActiveRequest?._id || "")}`}
@@ -1683,6 +1794,16 @@ export default function JobDetailsClient({ id }: { id: string }) {
                                 {workflowBusy === "status-3" ? "Saving…" : "Start job"}
                               </button>
                             ) : null}
+                            {["2", "3", "8", "9"].includes(currentWorkerStatus) ? (
+                              <button
+                                type="button"
+                                className="jdc-inline-btn warn"
+                                disabled={workflowBusy === "status-5"}
+                                onClick={() => handleLifecycleStatus(5)}
+                              >
+                                {workflowBusy === "status-5" ? "Saving…" : "Cancel job"}
+                              </button>
+                            ) : null}
                             {["3", "8", "9"].includes(currentWorkerStatus) ? (
                               !hasSavedBank ? (
                                 <button
@@ -1736,14 +1857,14 @@ export default function JobDetailsClient({ id }: { id: string }) {
                           </div>
                         </>
                       ) : null}
-                      {currentWorkerStatus === "6" ? (
-                        <p className="jdc-apply-note">You have marked this job as completed. The employer still needs to confirm the finish.</p>
+                      {getWorkerPaymentNote(currentWorkerStatus) ? (
+                        <p className="jdc-apply-note">{getWorkerPaymentNote(currentWorkerStatus)}</p>
+                      ) : null}
+                      {["2", "3", "8", "9"].includes(currentWorkerStatus) ? (
+                        <p className="jdc-apply-note">Cancelling after accepting may result in a $5 cancellation fee.</p>
                       ) : null}
                       {!hasSavedBank && ["3", "8", "9"].includes(currentWorkerStatus) ? (
                         <p className="jdc-apply-note">Add a bank account before marking this job complete so your payout can go to your wallet.</p>
-                      ) : null}
-                      {currentWorkerStatus === "7" ? (
-                        <p className="jdc-apply-note">This job has been fully completed and confirmed.</p>
                       ) : null}
                     </div>
                   ) : (
@@ -1829,8 +1950,14 @@ export default function JobDetailsClient({ id }: { id: string }) {
                             }}
                           >
                             <span aria-hidden="true">✓</span>
-                            <span>Job has been accepted</span>
+                            <span>Payment secured</span>
                           </div>
+                        ) : null}
+                        {["2", "3", "6"].includes(posterActiveStatus) ? (
+                          <p className="jdc-apply-note">Payment is being held securely by Gumboot until the job is completed.</p>
+                        ) : null}
+                        {["2", "3", "6"].includes(posterActiveStatus) ? (
+                          <p className="jdc-apply-note">A $5 cancellation fee may apply after a job has been accepted and payment has been secured.</p>
                         ) : null}
                         <div className="jdc-inline-actions">
                           {canChatAsPoster ? (
@@ -1846,15 +1973,24 @@ export default function JobDetailsClient({ id }: { id: string }) {
                             <button
                               type="button"
                               className="jdc-inline-btn success"
-                              disabled={workflowBusy === "status-7"}
-                              onClick={() => handleLifecycleStatus(7)}
+                              onClick={() => router.push(`/jobs/${encodeURIComponent(job?._id || id)}/completion/${encodeURIComponent(posterActiveRequest?._id || "")}`)}
                             >
-                              {workflowBusy === "status-7" ? "Saving…" : "Confirm finished"}
+                              Release payment
+                            </button>
+                          ) : null}
+                          {["2", "3", "6"].includes(posterActiveStatus) ? (
+                            <button
+                              type="button"
+                              className="jdc-inline-btn warn"
+                              disabled={deleteBusy}
+                              onClick={handleOwnerCancelJob}
+                            >
+                              {deleteBusy ? "Saving…" : "Cancel job"}
                             </button>
                           ) : null}
                         </div>
                         {posterActiveStatus === "7" ? (
-                          <p className="jdc-apply-note">This job has been confirmed as finished.</p>
+                          <p className="jdc-apply-note">Payment released.</p>
                         ) : null}
                       </div>
                     ) : null}
@@ -1970,11 +2106,14 @@ export default function JobDetailsClient({ id }: { id: string }) {
                                     }}
                                   >
                                     <span aria-hidden="true">✓</span>
-                                    <span>Job accepted</span>
+                                    <span>Payment secured</span>
                                   </div>
                                 ) : null}
                                 {!jobLockedAfterAcceptance ? (
                                   <>
+                                    <div style={{ width: "100%", fontSize: 12, lineHeight: 1.6, color: "var(--sub)" }}>
+                                      Your payment will be held securely by Gumboot until the job is completed.
+                                    </div>
                                     <button
                                       type="button"
                                       className="jdc-apply-btn"

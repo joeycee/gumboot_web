@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ApiError } from "@/lib/api";
 import {
   fetchJobApplications,
   findApplicationByRequestId,
@@ -20,7 +21,10 @@ import {
   type WorkerCompletedJob,
   type WorkerPublicProfileBody,
 } from "@/lib/publicProfiles";
+import { createAcceptancePaymentIntent } from "@/lib/payments";
+import { stripePromise } from "@/lib/stripe";
 import { useMe } from "@/lib/useMe";
+import { getWorkerVerificationLabel, getWorkerVerificationStatus } from "@/lib/workerVerification";
 
 type UserValue =
   | string
@@ -196,6 +200,30 @@ const styles = `
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: rgba(229,229,229,0.42);
+  }
+  .ofr-verify-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 30px;
+    width: fit-content;
+    margin-top: 8px;
+    padding: 0 12px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .ofr-verify-badge.verified {
+    color: #dbeafe;
+    border: 1px solid rgba(96,165,250,0.4);
+    background: rgba(37,99,235,0.22);
+  }
+  .ofr-verify-badge.unverified {
+    color: rgba(229,229,229,0.82);
+    border: 1px solid rgba(229,229,229,0.12);
+    background: rgba(229,229,229,0.06);
   }
   .ofr-mini {
     margin-top: 8px;
@@ -570,8 +598,15 @@ export default function OfferReviewClient({ jobId, requestId }: { jobId: string;
   }, [offer, workerProfile]);
   const workerName = getUserFullName(worker);
   const workerAvatar = resolveUserImageUrl(worker?.image);
+  const workerId = getApplicationWorkerId(offer);
   const workerRating = toFiniteNumber(workerProfile?.ratingdata?.averageRating);
   const workerReviewCount = toFiniteNumber(workerProfile?.ratingdata?.count);
+  const workerVerificationBadge = useMemo(() => {
+    const directStatus = getWorkerVerificationStatus(worker);
+    if (directStatus) return directStatus;
+    const fallbackStatus = workerProfile?.verificationStatus?.badge;
+    return fallbackStatus === "verified" ? "verified" : fallbackStatus === "unverified" ? "unverified" : null;
+  }, [worker, workerProfile]);
   const completedJobsCount = Number(workerProfile?.completedJobs?.length ?? 0);
   const completedJobs = (workerProfile?.completedJobs ?? []).slice(0, 3);
   const offerPrice = offer?.offered_price ?? workerProfile?.offerPrice?.offered_price ?? job?.price ?? "";
@@ -587,6 +622,14 @@ export default function OfferReviewClient({ jobId, requestId }: { jobId: string;
   const offerAccepted = String(offer?.job_status ?? "") === "2";
   const decisionsClosed = Boolean(acceptedOffer);
   const canAct = isOwner && !decisionsClosed && ["0", "1", "4"].includes(String(offer?.job_status ?? "1"));
+  const canMessageWorker = Boolean(isOwner && workerId);
+
+  function openChat() {
+    if (!workerId) return;
+    const params = new URLSearchParams({ userId: workerId });
+    if (workerName.trim()) params.set("name", workerName.trim());
+    router.push(`/messages?${params.toString()}`);
+  }
 
   async function handleDecision(nextStatus: 2 | 4) {
     if (!offer?._id) return;
@@ -594,14 +637,47 @@ export default function OfferReviewClient({ jobId, requestId }: { jobId: string;
     setError(null);
     setMessage(null);
     try {
+      if (nextStatus === 2) {
+        const paymentResponse = await createAcceptancePaymentIntent({
+          jobId,
+          jobRequestedId: offer._id,
+        });
+
+        const paymentBody = paymentResponse.body;
+        if (!paymentBody?.alreadyHeld) {
+          const clientSecret = paymentBody?.clientSecret;
+          if (!clientSecret) {
+            throw new Error("Missing payment confirmation details.");
+          }
+
+          const stripe = await stripePromise;
+          if (!stripe) {
+            throw new Error("Stripe is not configured for this environment.");
+          }
+
+          const result = await stripe.confirmCardPayment(clientSecret);
+          if (result.error) {
+            throw new Error(result.error.message || "We couldn't secure your payment just yet. Please try again.");
+          }
+
+          if (!["succeeded", "processing"].includes(String(result.paymentIntent?.status ?? ""))) {
+            throw new Error(`Payment status: ${result.paymentIntent?.status || "unknown"}`);
+          }
+        }
+      }
+
       await updateJobApplicationStatus({
         jobRequested_id: offer._id,
         job_id: jobId,
         job_status: nextStatus,
       });
-      setMessage(nextStatus === 2 ? "Offer accepted successfully." : "Offer denied successfully.");
+      setMessage(nextStatus === 2 ? "Payment secured" : "Offer denied successfully.");
       await loadOffer();
     } catch (nextError) {
+      if (nextError instanceof ApiError && (nextError.status === 401 || nextError.status === 403)) {
+        router.replace(`/auth/login?next=${encodeURIComponent(`/jobs/${jobId}/offers/${requestId}`)}`);
+        return;
+      }
       setError(nextError instanceof Error ? nextError.message : "Unable to update this offer.");
     } finally {
       setActionBusy(null);
@@ -618,7 +694,7 @@ export default function OfferReviewClient({ jobId, requestId }: { jobId: string;
               <p className="ofr-kicker">Marketplace offer review</p>
               <h1 className="ofr-title">Review this offer</h1>
               <p className="ofr-subtitle">
-                Check the applicant profile, their rating, and the message that came with this offer before you accept or deny it.
+                Check the applicant profile, their rating, and their message before you decide. If you accept, your payment will be held securely by Gumboot until the job is completed.
               </p>
             </div>
 
@@ -647,7 +723,14 @@ export default function OfferReviewClient({ jobId, requestId }: { jobId: string;
 
                 {message ? <div className="ofr-status-banner ok">{message}</div> : null}
                 {error ? <div className="ofr-status-banner error">{error}</div> : null}
-                {offerAccepted ? <div className="ofr-status-banner ok">✓ Job has been accepted.</div> : null}
+                {offerAccepted ? (
+                  <div className="ofr-status-banner ok">
+                    ✓ Payment secured
+                    <span style={{ display: "block", marginTop: 6 }}>
+                      Payment is being held securely by Gumboot until the job is completed.
+                    </span>
+                  </div>
+                ) : null}
 
                 <Link className="ofr-profile-card" href={profileHref}>
                   <div className="ofr-profile-top">
@@ -664,6 +747,12 @@ export default function OfferReviewClient({ jobId, requestId }: { jobId: string;
                         <span className="ofr-profile-label">Applicant profile</span>
                       </div>
                       <h2 className="ofr-name">{workerName}</h2>
+                      {workerVerificationBadge ? (
+                        <div className={`ofr-verify-badge ${workerVerificationBadge}`}>
+                          <span>{workerVerificationBadge === "verified" ? "✓" : "•"}</span>
+                          <span>{getWorkerVerificationLabel(workerVerificationBadge)}</span>
+                        </div>
+                      ) : null}
                       <div className="ofr-mini">
                         <span className="ofr-stars" aria-label={`Rating ${workerRating.toFixed(1)} out of 5`}>
                           ★ {workerRating.toFixed(1)}
@@ -708,6 +797,15 @@ export default function OfferReviewClient({ jobId, requestId }: { jobId: string;
                   </div>
 
                   {canAct ? (
+                    <div className="ofr-message">
+                      <div className="ofr-offer-label">Payment timing</div>
+                      <div className="ofr-message-copy">
+                        Your payment will be held securely by Gumboot until the job is completed.
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {canAct ? (
                     <div className="ofr-actions">
                       <button
                         type="button"
@@ -737,6 +835,13 @@ export default function OfferReviewClient({ jobId, requestId }: { jobId: string;
                         : "Only the job owner can accept or deny this offer."}
                     </div>
                   )}
+                  {offerAccepted && canMessageWorker ? (
+                    <div className="ofr-actions">
+                      <button type="button" className="ofr-btn primary" onClick={openChat}>
+                        Message user
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="ofr-dropdown">
                   <button

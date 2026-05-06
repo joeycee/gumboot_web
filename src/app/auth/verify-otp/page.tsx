@@ -317,7 +317,7 @@ export default function VerifyOtpPage() {
     "";
   const flow = params.get("flow") ?? "login";
   const nextPath = params.get("next");
-  const signupSuccessPath = nextPath || "/?signup=1&needs_docs=1";
+  const signupSuccessPath = nextPath || "/?signup=1";
   const isTwilioDevMode = useLocalDevOtpBypassEnabled();
   const devOtp = isTwilioDevMode
     ? params.get("dev_otp") ?? "123456"
@@ -339,17 +339,6 @@ export default function VerifyOtpPage() {
     try {
       setLoading(true);
       setError(null);
-      if (flow === "signup" && isTwilioDevMode) {
-        if (otp !== devOtp) {
-          throw new Error("Use the development code shown on screen.");
-        }
-        setAuthToken("dev-local-token");
-        if (typeof window !== "undefined") {
-          window.sessionStorage.removeItem(SIGNUP_DRAFT_KEY);
-        }
-        router.push(signupSuccessPath);
-        return;
-      }
       if (!serviceSid) {
         throw new Error("Missing service SID. Please request a new OTP.");
       }
@@ -370,7 +359,10 @@ export default function VerifyOtpPage() {
       setAuthToken(token);
       try {
         await me();
-      } catch {}
+      } catch {
+        clearAuthToken();
+        throw new Error("Your session could not be started. Please request a new code and try again.");
+      }
       if (flow === "signup" && typeof window !== "undefined") {
         window.sessionStorage.removeItem(SIGNUP_DRAFT_KEY);
       }

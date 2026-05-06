@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { hasCompletedIdentityVerification } from "@/lib/accountStatus";
 import { isClientE2ETestModeEnabled } from "@/lib/e2eTestMode";
 import { getJobTypes, JobType } from "@/lib/postJob";
 import { extractCardsFromResponse, getSavedCards } from "@/lib/payments";
@@ -1127,7 +1126,6 @@ export default function PostJobPage() {
     return found?.name || "";
   }, [jobTypeId, jobTypes]);
   const clockHandDegrees = useMemo(() => getClockHandDegrees(exactTime), [exactTime]);
-  const hasIdentityVerification = hasCompletedIdentityVerification(me);
 
   function canProceed() {
     if (step === 0) return title.trim().length >= 3 && description.trim().length >= 10;
@@ -1172,29 +1170,6 @@ export default function PostJobPage() {
           hadImages: files.length > 0,
         });
         router.push(`/auth/login?next=${encodeURIComponent(resumePath)}`);
-        return;
-      }
-
-      if (!hasIdentityVerification) {
-        setPendingResumeSubmit(true);
-        await cachePostJobImages(files);
-        writePostJobDraft({
-          step: steps.length - 1,
-          title,
-          description,
-          jobTypeId,
-          budget,
-          dateMode,
-          jobDate,
-          timeMode,
-          exactTime,
-          addressLine,
-          lat,
-          lng,
-          pendingSubmit: true,
-          hadImages: files.length > 0,
-        });
-        router.push(`/auth/signup/profile-setup?next=${encodeURIComponent(resumePath)}`);
         return;
       }
 
@@ -1352,7 +1327,6 @@ export default function PostJobPage() {
     lng,
     meLoading,
     me?._id,
-    hasIdentityVerification,
     refreshSavedCardState,
     resumePath,
     router,
@@ -1430,16 +1404,6 @@ export default function PostJobPage() {
                 Click here
               </Link>
               {" "}to go straight to card setup, and we&apos;ll bring you back here to finish posting.
-            </div>
-          )}
-
-          {step === steps.length - 1 && readToken() && !meLoading && !hasIdentityVerification && (
-            <div className="pj-banner">
-              ID verification is required before posting a job.{" "}
-              <Link className="pj-banner-link" href={`/auth/signup/profile-setup?next=${encodeURIComponent(resumePath)}`}>
-                Click here
-              </Link>
-              {" "}to go straight to ID verification, and we&apos;ll bring you back here to finish posting.
             </div>
           )}
 

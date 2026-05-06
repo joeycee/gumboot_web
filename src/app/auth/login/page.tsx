@@ -384,16 +384,43 @@ const styles = `
     color: #E5E5E5;
     border-color: rgba(229,229,229,0.42);
   }
-  .lp-signup-row { font-size: 13px; color: rgba(229,229,229,0.50); }
-  .lp-signup-link {
-    color: #26A69A;
-    font-weight: 500;
-    text-decoration: none;
-    border-bottom: 1px solid rgba(38,166,154,0.35);
-    padding-bottom: 1px;
-    transition: color 0.14s, border-color 0.14s;
+  .lp-signup-row {
+    margin-top: 14px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(38,166,154,0.22);
+    background: rgba(38,166,154,0.10);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+    font-size: 13px;
+    color: rgba(229,229,229,0.82);
   }
-  .lp-signup-link:hover { color: #2ec4b6; border-color: rgba(46,196,182,0.60); }
+  .lp-signup-copy {
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .lp-signup-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    padding: 0 16px;
+    border-radius: 999px;
+    background: #26A69A;
+    color: #ffffff;
+    font-weight: 700;
+    text-decoration: none;
+    box-shadow: 0 4px 16px rgba(38,166,154,0.25);
+    transition: background 0.14s, transform 0.10s, box-shadow 0.14s;
+  }
+  .lp-signup-link:hover {
+    background: #1E8A80;
+    box-shadow: 0 4px 20px rgba(38,166,154,0.35);
+  }
+  .lp-signup-link:active { transform: scale(0.99); }
 
   @media (max-width: 640px) {
     .lp-root {
@@ -625,15 +652,15 @@ export default function LoginPage() {
               <Link href="/terms" className="lp-legal-link">Terms of Service</Link> and{" "}
               <Link href="/privacy" className="lp-legal-link">Privacy Policy</Link>.
             </p>
-            <p className="lp-signup-row">
-              New to Gumboot?{" "}
+            <div className="lp-signup-row">
+              <span className="lp-signup-copy">New to Gumboot?</span>
               <Link
                 href={nextPath ? `/auth/signup?next=${encodeURIComponent(nextPath)}` : "/auth/signup"}
                 className="lp-signup-link"
               >
                 Create an account
               </Link>
-            </p>
+            </div>
           </section>
 
           <section className="lp-bottom-panel">

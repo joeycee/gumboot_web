@@ -600,7 +600,7 @@ export default function SignupPage() {
     try {
       setLoading(true);
       setError(null);
-      const signupNextPath = nextPath || "/?signup=1&needs_docs=1";
+      const signupNextPath = nextPath || "/?signup=1";
       const payload = {
         ...form,
         country_code: normalizeCountryCode(form.country_code),
@@ -609,14 +609,8 @@ export default function SignupPage() {
       if (!payload.country_code || !payload.phone) {
         throw new Error("Enter a valid country code and mobile number.");
       }
-      if (isTwilioDevMode) {
-        router.push(
-          `/auth/verify-otp?flow=signup&next=${encodeURIComponent(signupNextPath)}&phone=${encodeURIComponent(payload.phone)}&country_code=${encodeURIComponent(payload.country_code)}&dev_otp=123456`
-        );
-        return;
-      }
       const res = await signup(payload);
-      const devOtp = "";
+      const devOtp = isTwilioDevMode ? "123456" : "";
       const serviceSid =
         res?.body?.serviceSid ??
         res?.body?.service_sid ??

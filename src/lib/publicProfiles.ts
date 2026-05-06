@@ -16,8 +16,14 @@ export type PublicProfileUser = {
   address?: string;
   phone?: string | number;
   country_code?: string | number;
+  admin_verification_status?: "verified" | "unverified" | string;
   skill?: Array<{ _id?: string; name?: string; image?: string[] }>;
   tools?: Array<{ _id?: string; tool_name?: string; name?: string } | string>;
+};
+
+export type PublicProfileVerificationStatus = {
+  badge?: "verified" | "unverified" | string;
+  documentsUploaded?: boolean;
 };
 
 export type PublicProfileRating = {
@@ -62,6 +68,7 @@ export type WorkerPublicProfileBody = {
   workerDetails?: PublicProfileUser;
   userDetail?: PublicProfileUser;
   ratingdata?: PublicProfileRating;
+  verificationStatus?: PublicProfileVerificationStatus;
   offerPrice?: {
     message?: string;
     offered_price?: string | number;
@@ -75,6 +82,7 @@ export type EmployerPublicProfileBody = {
   workerDetails?: PublicProfileUser;
   userDetail?: PublicProfileUser;
   ratingdata?: PublicProfileRating;
+  verificationStatus?: PublicProfileVerificationStatus;
   completedJobs?: PublicProfileJob[];
   newJobs?: PublicProfileJob[];
 };

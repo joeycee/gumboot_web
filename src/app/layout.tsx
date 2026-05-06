@@ -3,6 +3,7 @@ import "./globals.css";
 
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
+import { ScrollToTopOnNavigate } from "@/components/ScrollToTopOnNavigate";
 import { getSiteOrigin } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -30,6 +31,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
+        <ScrollToTopOnNavigate />
         <div className="gb-app-shell">
           <Navbar />
           <main className="gb-main">{children}</main>

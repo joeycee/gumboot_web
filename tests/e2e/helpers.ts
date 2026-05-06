@@ -400,6 +400,40 @@ export async function applyToJobViaApi(
   });
 }
 
+export async function prepareAcceptancePaymentViaApi(
+  request: APIRequestContext,
+  session: SessionInfo,
+  jobId: string,
+  jobRequestedId: string
+) {
+  await apiRequest(request, "/billing/acceptance-payment-intent", {
+    method: "POST",
+    token: session.token,
+    data: {
+      jobId,
+      jobRequestedId,
+    },
+  });
+}
+
+export async function updateJobStatusViaApi(
+  request: APIRequestContext,
+  session: SessionInfo,
+  jobRequestedId: string,
+  jobId: string,
+  jobStatus: 2 | 4 | 6 | 7
+) {
+  await apiRequest(request, "/updateJobStatus", {
+    method: "POST",
+    token: session.token,
+    data: {
+      jobRequested_id: jobRequestedId,
+      job_id: jobId,
+      job_status: jobStatus,
+    },
+  });
+}
+
 export async function getJobApplicationForWorker(
   request: APIRequestContext,
   token: string,

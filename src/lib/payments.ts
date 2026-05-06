@@ -162,6 +162,41 @@ export async function createCardSetupIntent() {
   );
 }
 
+export async function createAcceptancePaymentIntent(payload: {
+  jobId: string;
+  jobRequestedId: string;
+  paymentMethodId?: string | null;
+}) {
+  return api<ApiEnvelope<{
+    alreadyHeld?: boolean;
+    requiresConfirmation?: boolean;
+    clientSecret?: string;
+    paymentIntentId?: string;
+    transactionId?: string;
+    amount?: number;
+    currency?: string;
+  }>>("/billing/acceptance-payment-intent", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export async function releaseHeldPayment(payload: {
+  jobId: string;
+  jobRequestedId: string;
+}) {
+  return api<ApiEnvelope<{
+    alreadyReleased?: boolean;
+    released?: boolean;
+    transactionId?: string;
+    workerPayoutAmount?: number;
+    adminFeeAmount?: number;
+  }>>("/billing/release-held-payment", {
+    method: "POST",
+    body: payload,
+  });
+}
+
 export async function setDefaultSavedCard(paymentMethodId: string) {
   return api<ApiEnvelope<SavedCard>>("/billing/default-payment-method", {
     method: "POST",

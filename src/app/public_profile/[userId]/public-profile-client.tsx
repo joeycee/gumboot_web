@@ -17,6 +17,7 @@ import {
   type WorkerPublicProfileBody,
   type WorkerCompletedJob,
 } from "@/lib/publicProfiles";
+import { getWorkerVerificationLabel, getWorkerVerificationStatus } from "@/lib/workerVerification";
 
 type MobileDeviceKind = "ios" | "android" | "other";
 
@@ -269,6 +270,32 @@ const styles = `
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: rgba(229,229,229,0.65);
+  }
+
+  .pubp-verify-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    border-radius: 999px;
+    padding: 0 14px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .pubp-verify-pill.verified {
+    color: #dbeafe;
+    border: 1px solid rgba(96, 165, 250, 0.42);
+    background: rgba(37, 99, 235, 0.22);
+    box-shadow: inset 0 0 0 1px rgba(147, 197, 253, 0.12);
+  }
+
+  .pubp-verify-pill.unverified {
+    color: rgba(229,229,229,0.82);
+    border: 1px solid rgba(229,229,229,0.14);
+    background: rgba(229,229,229,0.06);
   }
 
   .pubp-bio {
@@ -999,6 +1026,12 @@ export default function PublicProfileClient({ userId }: { userId: string }) {
     ? displayedReviewCount
     : getRatingValue(rating?.count);
   const mobilePrompt = useMemo(() => getMobilePromptConfig(mobileDeviceKind), [mobileDeviceKind]);
+  const verificationBadge = useMemo(() => {
+    const directStatus = getWorkerVerificationStatus(person);
+    if (directStatus) return directStatus;
+    const fallbackStatus = profile?.body?.verificationStatus?.badge;
+    return fallbackStatus === "verified" ? "verified" : fallbackStatus === "unverified" ? "unverified" : null;
+  }, [person, profile]);
 
   function dismissMobilePrompt() {
     setShowMobilePrompt(false);
@@ -1147,6 +1180,12 @@ export default function PublicProfileClient({ userId }: { userId: string }) {
                         <h2 className="pubp-name">{fullName}</h2>
                         <div className="pubp-label-row">
                           <span className="pubp-pill">Profile</span>
+                          {verificationBadge ? (
+                            <span className={`pubp-verify-pill ${verificationBadge}`}>
+                              <span>{verificationBadge === "verified" ? "✓" : "•"}</span>
+                              <span>{getWorkerVerificationLabel(verificationBadge)}</span>
+                            </span>
+                          ) : null}
                           <span className="pubp-pill">
                             <span>★</span>
                             <span>{ratingAverage > 0 ? ratingAverage.toFixed(1) : "0.0"}</span>

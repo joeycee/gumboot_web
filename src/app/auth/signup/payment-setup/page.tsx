@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ApiError } from "@/lib/api";
+import { ApiError, getStoredAuthToken } from "@/lib/api";
 import { StripeSetupCardForm } from "@/components/StripeSetupCardForm";
 import { addBankAccount, extractBanksFromResponse, extractCardsFromResponse, getBankAccounts, getSavedCards } from "@/lib/payments";
 
@@ -245,7 +245,25 @@ export default function PaymentSetupPage() {
   const [bankLoading, setBankLoading] = useState(true);
   const [cardResetKey, setCardResetKey] = useState(0);
 
+  const loginHref = useMemo(() => {
+    const returnPath = nextPath
+      ? `/auth/signup/payment-setup?setup=${setupMode}&required=${required ? "1" : "0"}&next=${encodeURIComponent(nextPath)}${isSettingsMode ? "&mode=settings" : ""}`
+      : `/auth/signup/payment-setup?setup=${setupMode}&required=${required ? "1" : "0"}${isSettingsMode ? "&mode=settings" : ""}`;
+    return `/auth/login?next=${encodeURIComponent(returnPath)}`;
+  }, [isSettingsMode, nextPath, required, setupMode]);
+
   useEffect(() => {
+    if (!getStoredAuthToken()) {
+      router.replace(loginHref);
+    }
+  }, [loginHref, router]);
+
+  useEffect(() => {
+    if (isBankSetup) {
+      setCardLoading(false);
+      return;
+    }
+
     let mounted = true;
 
     (async () => {
@@ -254,8 +272,12 @@ export default function PaymentSetupPage() {
         const response = await getSavedCards();
         if (!mounted) return;
         setHasSavedCard(extractCardsFromResponse(response).length > 0);
-      } catch {
+      } catch (nextError) {
         if (!mounted) return;
+        if (nextError instanceof ApiError && (nextError.status === 401 || nextError.status === 403)) {
+          router.replace(loginHref);
+          return;
+        }
         setHasSavedCard(false);
       } finally {
         if (mounted) setCardLoading(false);
@@ -265,9 +287,14 @@ export default function PaymentSetupPage() {
     return () => {
       mounted = false;
     };
-  }, [cardResetKey]);
+  }, [cardResetKey, isBankSetup, loginHref, router]);
 
   useEffect(() => {
+    if (!isBankSetup) {
+      setBankLoading(false);
+      return;
+    }
+
     let mounted = true;
 
     (async () => {
@@ -276,8 +303,12 @@ export default function PaymentSetupPage() {
         const response = await getBankAccounts();
         if (!mounted) return;
         setHasSavedBank(extractBanksFromResponse(response).length > 0);
-      } catch {
+      } catch (nextError) {
         if (!mounted) return;
+        if (nextError instanceof ApiError && (nextError.status === 401 || nextError.status === 403)) {
+          router.replace(loginHref);
+          return;
+        }
         setHasSavedBank(false);
       } finally {
         if (mounted) setBankLoading(false);
@@ -287,7 +318,7 @@ export default function PaymentSetupPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [isBankSetup, loginHref, router]);
 
   async function handleComplete(event: React.FormEvent) {
     event.preventDefault();
@@ -364,7 +395,7 @@ export default function PaymentSetupPage() {
           <p className="pay-sub">
             {isBankSetup
               ? "Workers only need a bank account before marking a job complete or using wallet withdrawals."
-              : "Job posters only need a saved card before posting or confirming payment on a completed job."}
+              : "Job posters only need a saved card before posting or releasing payment when a completed job is ready to sign off."}
           </p>
 
           {error ? <div className="pay-error">{error}</div> : null}
@@ -431,6 +462,7 @@ export default function PaymentSetupPage() {
                         buttonLabel="Save secure card"
                         makeDefaultOnSuccess
                         resetKey={cardResetKey}
+                        onAuthError={() => router.replace(loginHref)}
                         onSuccess={() => {
                           setHasSavedCard(true);
                           setCardResetKey((current) => current + 1);

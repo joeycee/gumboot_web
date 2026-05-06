@@ -11,6 +11,7 @@ type AccountRecord = {
   lastname: string;
   email?: string;
   verified_user: number;
+  admin_verification_status: "verified" | "unverified";
   role: number;
   idproof?: string;
   selfie?: string;
@@ -70,6 +71,19 @@ type NotificationRecord = {
   createdAt: string;
 };
 
+type TransactionRecord = {
+  _id: string;
+  userId: string;
+  jobId: string;
+  acceptedRequestId: string;
+  amount: string;
+  currency: string;
+  paymentPhase: "held" | "released";
+  transactionStatus: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type Store = {
   initialized: boolean;
   accountsByToken: Record<string, AccountRecord>;
@@ -79,12 +93,14 @@ type Store = {
   jobs: Record<string, JobRecord>;
   applications: Record<string, ApplicationRecord>;
   notifications: Record<string, NotificationRecord>;
+  transactions: Record<string, TransactionRecord>;
   counters: {
     account: number;
     address: number;
     job: number;
     application: number;
     notification: number;
+    transaction: number;
   };
 };
 
@@ -111,6 +127,7 @@ function getStore(): Store {
       lastname: "Owner",
       email: "owner@example.com",
       verified_user: 1,
+      admin_verification_status: "unverified",
       role: 1,
       idproof: "/images/owner-idproof.jpg",
       selfie: "/images/owner-selfie.jpg",
@@ -128,6 +145,7 @@ function getStore(): Store {
       lastname: "Worker",
       email: "worker@example.com",
       verified_user: 1,
+      admin_verification_status: "verified",
       role: 2,
       idproof: "/images/worker-idproof.jpg",
       selfie: "/images/worker-selfie.jpg",
@@ -146,7 +164,8 @@ function getStore(): Store {
     jobs: {},
     applications: {},
     notifications: {},
-    counters: { account: 1, address: 1, job: 1, application: 1, notification: 1 },
+    transactions: {},
+    counters: { account: 1, address: 1, job: 1, application: 1, notification: 1, transaction: 1 },
   };
 
   return globalStore[STORE_KEY] as Store;
@@ -192,6 +211,7 @@ function serializeAccount(account: AccountRecord) {
     name: `${account.firstname} ${account.lastname}`.trim(),
     email: account.email ?? "",
     verified_user: account.verified_user,
+    admin_verification_status: account.admin_verification_status,
     role: account.role,
     rating: 5,
     reviews: 3,
@@ -377,6 +397,7 @@ async function handleRequest(request: Request, slug: string[]) {
       lastname: String(body.lastname ?? "").trim(),
       email: String(body.email ?? "").trim(),
       verified_user: 0,
+      admin_verification_status: "unverified",
       role: 1,
       idproof: "",
       selfie: "",
@@ -425,6 +446,62 @@ async function handleRequest(request: Request, slug: string[]) {
   if (path === "profile") {
     if (!account) return unauthorized();
     return ok({ profiledata: serializeAccount(account) });
+  }
+
+  if (path === "worker_public_profile") {
+    const workerId = String(url.searchParams.get("workerId") ?? "");
+    const jobRequestedId = String(url.searchParams.get("jobrequestedId") ?? "");
+    const worker = getAccountById(store, workerId);
+    if (!worker) return fail("Worker not found.", 404);
+
+    const application = jobRequestedId ? store.applications[jobRequestedId] : null;
+    const completedJobs = Object.values(store.applications)
+      .filter((entry) => entry.workerId === workerId && entry.job_status === 7)
+      .map((entry) => {
+        const job = store.jobs[entry.jobId];
+        return {
+          _id: entry._id,
+          workerId,
+          job_status: String(entry.job_status),
+          createdAt: entry.createdAt,
+          updatedAt: entry.updatedAt,
+          jobId: job
+            ? {
+                _id: job._id,
+                job_title: job.job_title,
+                price: job.price,
+                offered_price: entry.offered_price || job.price,
+                description: job.description,
+                createdAt: job.createdAt,
+                job_status: job.job_status,
+                image: [{ url: "/job-types/lawn-mowing.jpg" }],
+                job_type: store.jobTypes.find((jobType) => jobType._id === job.job_type) ?? { _id: job.job_type, name: "General" },
+              }
+            : undefined,
+        };
+      });
+
+    return ok({
+      workerDetails: serializeAccount(worker),
+      userDetail: serializeAccount(worker),
+      verificationStatus: {
+        badge: worker.admin_verification_status,
+        documentsUploaded: Boolean(worker.idproof && worker.selfie),
+      },
+      ratingdata: {
+        count: 3,
+        averageRating: 5,
+      },
+      offerPrice: application
+        ? {
+            message: application.message,
+            offered_price: application.offered_price,
+            admin_charges: "0",
+          }
+        : undefined,
+      completedJobs,
+      newJobs: [],
+    });
   }
 
   if (path === "billing/payment-methods") {
@@ -579,12 +656,86 @@ async function handleRequest(request: Request, slug: string[]) {
     const nextStatus = Number(body.job_status ?? 0);
     const application = store.applications[applicationId];
     if (!application) return fail("Application not found.", 404);
+    if (nextStatus === 2) {
+      const heldTransaction = Object.values(store.transactions).find(
+        (transaction) =>
+          transaction.jobId === application.jobId &&
+          transaction.acceptedRequestId === applicationId &&
+          transaction.paymentPhase === "held"
+      );
+      if (!heldTransaction) {
+        return fail("Secure payment before accepting this offer");
+      }
+    }
 
     application.job_status = nextStatus;
     application.updatedAt = new Date().toISOString();
     const job = store.jobs[application.jobId];
     if (job && nextStatus === 2) job.job_status = 2;
     return ok({ _id: applicationId, job_status: nextStatus });
+  }
+
+  if (path === "billing/acceptance-payment-intent" && method === "POST") {
+    if (!account) return unauthorized();
+    const body = (await parseBody(request)) as Record<string, unknown>;
+    const jobId = String(body.jobId ?? "");
+    const jobRequestedId = String(body.jobRequestedId ?? "");
+    const job = store.jobs[jobId];
+    const application = store.applications[jobRequestedId];
+    if (!job) return fail("Job not found.", 404);
+    if (!application || application.jobId !== jobId) return fail("Job request not found.", 404);
+
+    const existing = Object.values(store.transactions).find(
+      (transaction) => transaction.jobId === jobId && transaction.acceptedRequestId === jobRequestedId
+    );
+    if (existing?.paymentPhase === "held") {
+      return ok({
+        alreadyHeld: true,
+        transactionId: existing._id,
+        amount: Number(existing.amount),
+        currency: existing.currency,
+      });
+    }
+
+    const transactionId = existing?._id ?? nextId(store, "transaction");
+    const now = new Date().toISOString();
+    store.transactions[transactionId] = {
+      _id: transactionId,
+      userId: account.id,
+      jobId,
+      acceptedRequestId: jobRequestedId,
+      amount: application.offered_price || job.price,
+      currency: "nzd",
+      paymentPhase: "held",
+      transactionStatus: 1,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    return ok({
+      alreadyHeld: true,
+      transactionId,
+      amount: Number(store.transactions[transactionId].amount),
+      currency: "nzd",
+    });
+  }
+
+  if (path === "billing/release-held-payment" && method === "POST") {
+    if (!account) return unauthorized();
+    const body = (await parseBody(request)) as Record<string, unknown>;
+    const jobId = String(body.jobId ?? "");
+    const jobRequestedId = String(body.jobRequestedId ?? "");
+    const transaction = Object.values(store.transactions).find(
+      (entry) => entry.jobId === jobId && entry.acceptedRequestId === jobRequestedId
+    );
+    if (!transaction) return fail("No payment is ready to release for this job yet", 404);
+
+    transaction.paymentPhase = "released";
+    transaction.updatedAt = new Date().toISOString();
+    return ok({
+      released: true,
+      transactionId: transaction._id,
+    });
   }
 
   if (path === "notificationList") {

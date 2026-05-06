@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,6 +24,8 @@ type ApplyDraft = {
   message: string;
   awaitingVerification?: boolean;
 };
+
+const SERVICE_FEE_RATE = 0.035;
 
 function normalizeMeUser(payload: unknown) {
   if (!payload || typeof payload !== "object") return null;
@@ -70,6 +73,20 @@ function clearApplyDraft(jobId: string) {
   } catch {
     // Ignore storage restrictions in private browsing modes.
   }
+}
+
+function parseMoney(value: string) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatMoney(value: number) {
+  return new Intl.NumberFormat("en-NZ", {
+    style: "currency",
+    currency: "NZD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
 async function waitForVerifiedDocuments() {
@@ -265,6 +282,7 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [syncingDocuments, setSyncingDocuments] = useState(false);
+  const [returnedFromDocumentUpload, setReturnedFromDocumentUpload] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const submitLockRef = useRef(false);
@@ -287,6 +305,7 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
     if (!draft) return;
     setOfferAmount(draft.offerAmount);
     setMessage(draft.message);
+    setReturnedFromDocumentUpload(draft.awaitingVerification === true);
   }, [jobId]);
 
   useEffect(() => {
@@ -306,9 +325,15 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
   }, [jobId, message, offerAmount]);
 
   const canSubmit = useMemo(
-    () => offerAmount.trim().length > 0 && message.trim().length > 0 && !submitting && canOffer,
-    [canOffer, message, offerAmount, submitting]
+    () => offerAmount.trim().length > 0 && message.trim().length > 0 && !submitting,
+    [message, offerAmount, submitting]
   );
+  const offerAmountNumber = useMemo(() => parseMoney(offerAmount), [offerAmount]);
+  const estimatedWorkerPayout = useMemo(
+    () => Math.max(0, offerAmountNumber - offerAmountNumber * SERVICE_FEE_RATE),
+    [offerAmountNumber]
+  );
+  const showSendOfferButton = canOffer || returnedFromDocumentUpload || syncingDocuments || submitting;
 
   const waitForProfileSync = useCallback(async (draft: ApplyDraft) => {
     const trimmedOfferAmount = draft.offerAmount.trim();
@@ -338,7 +363,8 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
         message: trimmedMessage,
         awaitingVerification: false,
       });
-      setSuccess("Documents ready. You can send your offer now.");
+      setReturnedFromDocumentUpload(false);
+      setSuccess("Documents ready. Sending your offer now.");
       return true;
     } finally {
       setSyncingDocuments(false);
@@ -368,14 +394,19 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
     setSuccess(null);
     writeApplyDraft(jobId, draft);
     try {
-      const latestMe = normalizeMeUser(await fetchMe());
+      let latestMe = normalizeMeUser(await fetchMe());
       if (!hasCompletedIdentityVerification(latestMe as MeUser | null)) {
-        await waitForProfileSync({
+        const verified = await waitForProfileSync({
           offerAmount: trimmedOfferAmount,
           message: trimmedMessage,
           awaitingVerification: true,
         });
-        return;
+        if (!verified) return;
+        latestMe = normalizeMeUser(await fetchMe());
+        if (!hasCompletedIdentityVerification(latestMe as MeUser | null)) {
+          setError("Your documents are still finishing upload. We saved your offer while your profile catches up.");
+          return;
+        }
       }
 
       await applyToJob({
@@ -384,6 +415,7 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
         offered_price: trimmedOfferAmount.replace(/[^\d.]/g, ""),
       });
       clearApplyDraft(jobId);
+      setReturnedFromDocumentUpload(false);
       setSuccess("Application sent.");
       setTimeout(() => {
         router.push(`/jobs/${jobId}?applied=1`);
@@ -411,20 +443,10 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
   }, [jobId, router, waitForProfileSync]);
 
   async function handleSubmit() {
-    if (!canOffer) {
-      writeApplyDraft(jobId, {
-        offerAmount,
-        message,
-        awaitingVerification: true,
-      });
-      setError("Upload your license/ID proof and selfie before sending an offer.");
-      return;
-    }
-
     await submitOfferDraft({
       offerAmount,
       message,
-      awaitingVerification: false,
+      awaitingVerification: !canOffer,
     });
   }
 
@@ -437,8 +459,8 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
     autoResumeStartedRef.current = true;
     setOfferAmount(draft.offerAmount);
     setMessage(draft.message);
-    void waitForProfileSync(draft);
-  }, [jobId, me?._id, meLoading, waitForProfileSync]);
+    setReturnedFromDocumentUpload(true);
+  }, [jobId, me?._id, meLoading]);
 
   return (
     <>
@@ -457,13 +479,18 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
             </p>
 
             <div className="apply-grid">
-              {me?._id && !canOffer ? (
+              {me?._id && !canOffer && !returnedFromDocumentUpload && !syncingDocuments ? (
                 <div className="apply-error apply-warning">
                   You can still sign in to Gumboot, but you must upload your license/ID proof and selfie before you can send an offer on jobs.{" "}
                   <Link className="apply-warning-link" href={profileSetupHref}>
                     Click here
                   </Link>
                   {" "}to go straight there.
+                </div>
+              ) : null}
+              {me?._id && !canOffer && returnedFromDocumentUpload && !syncingDocuments ? (
+                <div className="apply-success">
+                  Your documents are uploaded. Press send offer and we&apos;ll finish syncing them before submitting.
                 </div>
               ) : null}
 
@@ -477,6 +504,10 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
                   onChange={(e) => setOfferAmount(e.target.value.replace(/[^\d.]/g, ""))}
                   data-testid="apply-offer-amount"
                 />
+                <div className="apply-note">
+                  A 3.5% service fee is deducted from your offer price.
+                  {offerAmountNumber > 0 ? ` If you offer ${formatMoney(offerAmountNumber)}, you’ll receive about ${formatMoney(estimatedWorkerPayout)}.` : ""}
+                </div>
               </label>
 
               <label className="apply-field">
@@ -494,22 +525,22 @@ export default function ApplyJobClient({ jobId }: { jobId: string }) {
               {success ? <div className="apply-success">{success}</div> : null}
               {syncingDocuments ? (
                 <div className="apply-success apply-syncing">
-                  <img className="apply-syncing-logo" src="/logo.png" alt="Gumboot loading" />
-                  <div className="apply-syncing-title">Uploading Documents</div>
+                  <Image className="apply-syncing-logo" src="/logo.png" alt="Gumboot loading" width={52} height={52} />
+                  <div className="apply-syncing-title">Syncing Documents</div>
                   <div className="apply-syncing-copy">
-                    We&apos;re waiting for your selfie and ID upload to finish syncing. Your offer will send automatically as soon as your profile is ready.
+                    We&apos;re waiting for your selfie and ID upload to finish syncing. Your first offer will send automatically as soon as your profile is ready.
                   </div>
                 </div>
               ) : null}
             </div>
 
             <div className="apply-actions">
-              {canOffer ? (
+              {me?._id && showSendOfferButton ? (
                 <button className="apply-btn primary" type="button" disabled={!canSubmit} onClick={handleSubmit} data-testid="apply-send-offer">
-                  {syncingDocuments ? "Uploading documents…" : submitting ? "Sending..." : "Send offer"}
+                  {syncingDocuments ? "Syncing documents…" : submitting ? "Sending..." : "Send offer"}
                 </button>
               ) : null}
-              {me?._id && !canOffer ? (
+              {me?._id && !showSendOfferButton ? (
                 <Link
                   className="apply-btn secondary"
                   href={profileSetupHref}

@@ -90,6 +90,7 @@ type StripeSetupCardFormProps = {
   makeDefaultOnSuccess?: boolean;
   onSuccess?: (paymentMethodId: string) => Promise<void> | void;
   onError?: (message: string) => void;
+  onAuthError?: () => void;
   resetKey?: string | number;
 };
 
@@ -99,6 +100,7 @@ export function StripeSetupCardForm({
   makeDefaultOnSuccess = false,
   onSuccess,
   onError,
+  onAuthError,
   resetKey,
 }: StripeSetupCardFormProps) {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -121,11 +123,15 @@ export function StripeSetupCardForm({
       }
       setClientSecret(response.body.clientSecret);
     } catch (nextError) {
+      if (nextError instanceof ApiError && (nextError.status === 401 || nextError.status === 403)) {
+        onAuthError?.();
+        return;
+      }
       setError(nextError instanceof Error ? nextError.message : "Unable to prepare the secure card form.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onAuthError]);
 
   useEffect(() => {
     void loadIntent();

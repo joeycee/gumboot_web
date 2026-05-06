@@ -484,6 +484,16 @@ function requiresAcceptedJobCancellationFee(status: string | number | undefined)
   return ACCEPTED_JOB_STATUSES.has(String(status ?? "")) || LOCKED_JOB_STATUSES.has(String(status ?? ""));
 }
 
+function getAcceptedCancellationWarning() {
+  return [
+    "A $5 cancellation fee may apply after a job has been accepted and payment has been secured.",
+    "",
+    "You’ll be refunded the job amount minus a $5 cancellation fee.",
+    "",
+    "Do you want to cancel this job?",
+  ].join("\n");
+}
+
 export default function ManageJobsPage() {
   const searchParams = useSearchParams();
   const [postedJobs, setPostedJobs] = useState<ManagedJob[]>([]);
@@ -631,14 +641,19 @@ export default function ManageJobsPage() {
     setDeleteWarningJobId(null);
     const targetJob = postedJobs.find((job) => String(job._id ?? "") === jobId);
     const confirmMessage = requiresAcceptedJobCancellationFee(targetJob?.job_status)
-      ? "Cancelling this accepted job will charge a NZ$5 penalty to your saved card. Do you want to continue?"
+      ? getAcceptedCancellationWarning()
       : "Cancel this job?";
     if (!opts?.skipConfirm && !window.confirm(confirmMessage)) return;
     try {
       setError(null);
       setSuccess(null);
-      await cancelJob(jobId);
-      setSuccess("Job cancelled.");
+      const response = await cancelJob(jobId);
+      const cancellationCharge = response.body?.cancellationCharge as { cancellationFeeStatus?: string } | undefined;
+      setSuccess(
+        cancellationCharge?.cancellationFeeStatus === "collected"
+          ? "Job cancelled. You’ll be refunded the job amount minus a $5 cancellation fee."
+          : "Job cancelled."
+      );
       await load();
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to cancel job.");
@@ -988,14 +1003,12 @@ export default function ManageJobsPage() {
               <div className="jm-warning-kicker">Accepted Job Warning</div>
               <h2 className="jm-warning-title">This job can&apos;t be deleted for free.</h2>
               <p className="jm-warning-copy">
-                An accepted job cannot be deleted a $5 penalty will be incured. If you continue, we&apos;ll cancel this
-                accepted job and automatically charge the fee to your saved card.
+                A $5 cancellation fee may apply after a job has been accepted and payment has been secured.
               </p>
               <div className="jm-warning-card">
                 <p className="jm-warning-fee">NZ$5 cancellation fee</p>
                 <p className="jm-warning-note">
-                  Job: {deleteWarningJob.job_title || "Accepted job"}. Choose keep to leave it alone, or delete anyway
-                  to cancel it now and charge the fee automatically.
+                  Job: {deleteWarningJob.job_title || "Accepted job"}. If you continue, you&apos;ll be refunded the job amount minus a $5 cancellation fee.
                 </p>
               </div>
               <div className="jm-warning-actions">
@@ -1007,7 +1020,7 @@ export default function ManageJobsPage() {
                   type="button"
                   onClick={() => handleCancelJob(String(deleteWarningJob._id ?? ""), { skipConfirm: true })}
                 >
-                  Delete anyway
+                  Cancel job
                 </button>
               </div>
             </div>

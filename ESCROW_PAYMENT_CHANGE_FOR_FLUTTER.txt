@@ -1,0 +1,272 @@
+GUMBOOT ESCROW-STYLE PAYMENT CHANGE
+===================================
+
+Summary
+-------
+Gumboot has changed the job payment flow from "charge on completion" to "charge on acceptance, release on completion".
+
+This is an escrow-style platform hold, not a full Stripe Connect payout migration yet.
+
+Current behavior is now:
+1. A worker sends an offer on a job.
+2. The job owner accepts that offer.
+3. When the owner accepts, Gumboot charges the owner's saved card immediately and holds the money on the platform.
+4. The worker does the job.
+5. The worker marks the job as completed.
+6. The owner reviews the completed work and confirms completion.
+7. Only then does Gumboot release the held amount into the worker/admin wallet split.
+
+Important product change
+------------------------
+Before:
+- The owner accepted an offer first.
+- Payment was collected later on the completion screen.
+
+Now:
+- Payment must be secured before the offer is accepted.
+- The completion screen no longer charges the card.
+- The completion screen releases an already-held payment.
+
+Backend API changes
+-------------------
+New endpoint 1:
+POST /api/billing/acceptance-payment-intent
+
+Purpose:
+- Secure payment for a specific accepted offer before job status moves to accepted.
+
+Request body:
+{
+  "jobId": "<job id>",
+  "jobRequestedId": "<job request / offer id>",
+  "paymentMethodId": "<optional saved Stripe payment method id>"
+}
+
+Success response cases:
+
+Case A: payment already held
+{
+  "success": true,
+  "body": {
+    "alreadyHeld": true,
+    "transactionId": "...",
+    "paymentIntentId": "...",
+    "amount": 170.78,
+    "currency": "nzd"
+  }
+}
+
+Case B: frontend must complete Stripe confirmation
+{
+  "success": true,
+  "body": {
+    "clientSecret": "...",
+    "paymentIntentId": "...",
+    "transactionId": "...",
+    "amount": 170.78,
+    "currency": "nzd",
+    "requiresConfirmation": true
+  }
+}
+
+Notes:
+- If the owner already has a valid default saved card, the backend attempts to charge it.
+- If Stripe requires SCA / 3DS confirmation, use the returned clientSecret in the app.
+- If no saved card exists, the backend returns an error and the app should push the user into card setup.
+
+New endpoint 2:
+POST /api/billing/release-held-payment
+
+Purpose:
+- Release a payment that was already secured at acceptance time.
+
+Request body:
+{
+  "jobId": "<job id>",
+  "jobRequestedId": "<job request / offer id>"
+}
+
+Success response:
+{
+  "success": true,
+  "body": {
+    "released": true,
+    "transactionId": "...",
+    "workerPayoutAmount": 159.00,
+    "adminFeeAmount": 11.78
+  }
+}
+
+Idempotent repeat response:
+{
+  "success": true,
+  "body": {
+    "alreadyReleased": true,
+    "transactionId": "...",
+    "workerPayoutAmount": 159.00,
+    "adminFeeAmount": 11.78
+  }
+}
+
+Changed existing endpoint behavior
+----------------------------------
+POST /api/updateJobStatus
+
+When job_status = 2 (accept offer):
+- Backend now checks that a held payment already exists for that exact accepted offer.
+- If not, acceptance is rejected.
+
+Failure message:
+"Secure payment before accepting this offer"
+
+So the Flutter app must not treat offer acceptance as a single API call anymore.
+
+Required Flutter flow
+---------------------
+Owner accepts a worker offer:
+
+1. Ensure owner has a saved card.
+2. Call POST /api/billing/acceptance-payment-intent.
+3. Handle the response:
+   - If alreadyHeld = true:
+     Continue straight to step 4.
+   - If clientSecret is returned:
+     Confirm the payment in Flutter with Stripe using the clientSecret.
+     After successful Stripe confirmation, continue to step 4.
+4. Call POST /api/updateJobStatus with job_status = 2.
+5. Show success only after both payment hold and status update succeed.
+
+Worker completes the job:
+
+1. Worker still calls POST /api/updateJobStatus with job_status = 6.
+2. No charge happens here.
+
+Owner confirms job completion:
+
+1. Owner opens completion review.
+2. Owner calls POST /api/billing/release-held-payment.
+3. After release succeeds, owner calls POST /api/updateJobStatus with job_status = 7.
+4. Show the review screen / finished state.
+
+Stripe expectations for Flutter
+-------------------------------
+Acceptance path:
+- This is now a PaymentIntent confirmation flow, not a payment-on-completion flow.
+- If clientSecret is returned, confirm it in Flutter Stripe before continuing.
+
+Completion path:
+- Do not ask Stripe to charge again on the completion screen.
+- Completion now releases already-held platform funds.
+
+Data model notes from backend
+-----------------------------
+Transactions now track:
+- acceptedRequestId
+- payment_phase
+- heldAt
+- releasedAt
+
+payment_phase values:
+- none
+- requires_action
+- held
+- released
+- refunded
+- canceled
+
+What "held" means in this version
+---------------------------------
+"Held" currently means:
+- the owner's card has been charged successfully
+- the platform has recorded the money as secured
+- the worker/admin wallet split has NOT been credited yet
+
+"Released" means:
+- the completion confirmation happened
+- worker/admin wallet amounts were credited once
+
+This is not yet full Stripe Connect worker payout routing.
+It is the first escrow-style step using Gumboot platform-held funds plus wallet release.
+
+What changed in Gumboot Web
+---------------------------
+Offer acceptance screens now:
+- create/confirm the acceptance payment first
+- only then call updateJobStatus with accepted status
+
+Completion review screen now:
+- calls release-held-payment
+- no longer charges the saved card at completion
+
+What changed in Gumboot Backend
+-------------------------------
+Backend now:
+- stores held/released payment phase on transactions
+- prevents accepting an offer unless payment is already secured
+- marks successful acceptance payments as held
+- releases wallet amounts only on final owner completion confirmation
+- keeps release idempotent so duplicate taps do not double-pay
+
+Recommended Flutter UI copy changes
+-----------------------------------
+Accept offer button:
+- "Accept and secure payment"
+
+Completion button:
+- "Release payment"
+
+Helpful error cases to handle
+-----------------------------
+1. No saved card
+- Prompt user to add a card before accepting the offer.
+
+2. acceptance-payment-intent returns clientSecret
+- Run Stripe confirmation in the app.
+
+3. updateJobStatus returns "Secure payment before accepting this offer"
+- The app tried to accept before the hold completed.
+- Retry only after acceptance payment succeeds.
+
+4. release-held-payment returns 404 or 409
+- Payment was never secured, or not in held state yet.
+
+Suggested Flutter implementation order
+--------------------------------------
+1. Update owner offer-accept flow first.
+2. Update owner completion-confirm flow second.
+3. Remove any old completion-time card charge logic.
+4. Update UI text to reflect held funds and release.
+5. Add client-side guards so accept cannot continue without card setup.
+
+Testing checklist for Flutter
+-----------------------------
+1. Owner with saved card accepts offer:
+- payment hold succeeds
+- offer becomes accepted
+
+2. Owner without saved card tries to accept:
+- app redirects to card setup
+
+3. Stripe confirmation required on accept:
+- app confirms clientSecret
+- then accepts offer
+
+4. Worker marks job completed:
+- no extra charge occurs
+
+5. Owner confirms completion:
+- release-held-payment succeeds
+- updateJobStatus 7 succeeds
+
+6. Duplicate release tap:
+- no double payout should happen
+
+Contact between web and Flutter behavior
+----------------------------------------
+The Flutter app should now match the web app sequence exactly:
+
+Accept flow:
+acceptance-payment-intent -> Stripe confirm if needed -> updateJobStatus(2)
+
+Completion flow:
+release-held-payment -> updateJobStatus(7)

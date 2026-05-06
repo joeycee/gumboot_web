@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { hasCompletedIdentityVerification } from "@/lib/accountStatus";
 import { getApiBaseUrl, getApiOrigin } from "@/lib/api";
 import { useLocalDevOtpBypassEnabled } from "@/lib/useLocalDevOtpBypass";
+import { getWorkerVerificationLabel, getWorkerVerificationStatus } from "@/lib/workerVerification";
 
 const PROFILE_ENDPOINT = `${getApiBaseUrl()}/profile`;
 const API_BASE = getApiOrigin();
@@ -24,7 +25,9 @@ type ProfileData = {
   bio?: string;
   skill?: Skill[];
   tools?: Array<{ _id?: string; name?: string } | string>;
+  role?: string | number;
   verified_user?: number;
+  admin_verification_status?: "verified" | "unverified" | string;
   idproof?: string;
   selfie?: string;
 };
@@ -247,20 +250,30 @@ const styles = `
     display: block;
   }
 
-  .pp-verified-dot {
-    position: absolute;
-    bottom: 2px; right: 2px;
-    width: 22px; height: 22px;
-    background: var(--cta);
-    border-radius: 50%;
-    border: 2px solid rgba(42,52,57,0.85);
-    display: flex;
+  .pp-verified-badge {
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
+    gap: 8px;
+    min-height: 32px;
+    margin-top: 10px;
+    padding: 0 12px;
+    border-radius: 999px;
     font-size: 11px;
-    color: #0f172a;
-    font-weight: 900;
-    box-shadow: 0 10px 18px rgba(0,0,0,0.28);
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .pp-verified-badge.verified {
+    color: #dbeafe;
+    border: 1px solid rgba(96,165,250,0.42);
+    background: rgba(37,99,235,0.18);
+  }
+
+  .pp-verified-badge.unverified {
+    color: #5b6670;
+    border: 1px solid rgba(148,163,184,0.28);
+    background: rgba(148,163,184,0.12);
   }
 
   .pp-info { flex: 1; min-width: 0; }
@@ -553,6 +566,7 @@ export default function ProfilePage() {
   const profile = data?.profiledata;
   const rating = data?.ratingdata;
   const canOfferOnJobs = hasCompletedIdentityVerification(profile);
+  const verificationBadge = getWorkerVerificationStatus(profile);
 
   const fullName = useMemo(
     () =>
@@ -650,17 +664,17 @@ export default function ProfilePage() {
                     }}
                     className="pp-avatar"
                   />
-
-                  {canOfferOnJobs && (
-                    <div className="pp-verified-dot" title="Verified">
-                      ✓
-                    </div>
-                  )}
                 </div>
 
                 <div className="pp-info">
                   <h1 className="pp-name">{fullName}</h1>
                   {profile.email && <p className="pp-email">{profile.email}</p>}
+                  {verificationBadge ? (
+                    <div className={`pp-verified-badge ${verificationBadge}`}>
+                      <span>{verificationBadge === "verified" ? "✓" : "•"}</span>
+                      <span>{getWorkerVerificationLabel(verificationBadge)}</span>
+                    </div>
+                  ) : null}
 
                   <div className="pp-rating-row">
                     <RatingStars value={rating?.averageRating ?? 0} />

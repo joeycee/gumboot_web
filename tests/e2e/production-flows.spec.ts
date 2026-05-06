@@ -8,13 +8,15 @@ import {
   getJobTypeForTests,
   getTestAddress,
   loginViaUi,
+  prepareAcceptancePaymentViaApi,
   selectAddressSuggestion,
   setAuthToken,
+  updateJobStatusViaApi,
   uniqueJobTitle,
 } from "./helpers";
 
 test.describe("Production Flow Smoke Tests", () => {
-  test("plain signup lands on home with a documents warning", async ({ page }) => {
+  test("plain signup lands on home without forcing document setup", async ({ page }) => {
     const unique = String(Date.now()).slice(-6);
 
     await page.goto("/auth/signup");
@@ -29,10 +31,8 @@ test.describe("Production Flow Smoke Tests", () => {
     await page.getByTestId("otp-code-input").fill("123456");
     await page.getByTestId("otp-verify-button").click();
 
-    await expect(page).toHaveURL(/\/\?signup=1&needs_docs=1$/);
-    await expect(page.getByText("One More Step Before Applying")).toBeVisible();
-    await expect(page.getByText("you need to upload your license/ID proof and selfie before you can apply for jobs", { exact: false })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Add documents" })).toBeVisible();
+    await expect(page).toHaveURL(/\/\?signup=1$/);
+    await expect(page.getByText("One More Step Before Applying")).toHaveCount(0);
   });
 
   test("new signup keeps draft on OTP back and returns to the requested page", async ({ page }) => {
@@ -186,6 +186,15 @@ test.describe("Production Flow Smoke Tests", () => {
     await expect(page.getByText("The job id field is mandatory.")).not.toBeVisible();
   });
 
+  test("worker public profile shows a verified badge", async ({ page, request }) => {
+    const workerSession = await authenticateViaApi(request, getAccount("worker"));
+
+    await page.goto(`/public_profile/${workerSession.userId}`);
+
+    await expect(page.getByRole("heading", { name: /Wally Worker/i })).toBeVisible();
+    await expect(page.getByText("Verified", { exact: true }).first()).toBeVisible();
+  });
+
   test("job owner can accept application", async ({ page, request }) => {
     const ownerSession = await authenticateViaApi(request, getAccount("owner"));
     const workerSession = await authenticateViaApi(request, getAccount("worker"));
@@ -198,10 +207,107 @@ test.describe("Production Flow Smoke Tests", () => {
 
     await setAuthToken(page, ownerSession.token);
     await page.goto(`/jobs/${job.id}`);
+
+    await expect(page.getByText("Your payment will be held securely by Gumboot until the job is completed.")).toBeVisible();
     await page.getByTestId(`accept-application-${application.id}`).click();
 
-    await expect(page.getByText("Application accepted.")).toBeVisible();
-    await expect(page.getByText("Job accepted")).toBeVisible();
+    await expect(page.getByText("Payment secured").first()).toBeVisible();
+    await expect(page.getByText("Payment is being held securely by Gumboot until the job is completed.")).toBeVisible();
+  });
+
+  test("offer review shows a message user button after acceptance", async ({ page, request }) => {
+    const ownerSession = await authenticateViaApi(request, getAccount("owner"));
+    const workerSession = await authenticateViaApi(request, getAccount("worker"));
+    const job = await createJobViaApi(request, ownerSession, {
+      title: uniqueJobTitle("Playwright offer review message job"),
+    });
+
+    await applyToJobViaApi(request, workerSession, job.id, "Playwright offer review message application.", "155");
+    const application = await getJobApplicationForWorker(request, ownerSession.token, job.id, workerSession.userId);
+
+    await setAuthToken(page, ownerSession.token);
+    await page.goto(`/jobs/${job.id}/offers/${application.id}`);
+    await page.getByRole("button", { name: "Accept" }).click();
+
+    await expect(page.getByRole("button", { name: "Message user" })).toBeVisible();
+  });
+
+  test("job owner sees the cancellation fee warning before cancelling an accepted job", async ({ page, request }) => {
+    const ownerSession = await authenticateViaApi(request, getAccount("owner"));
+    const workerSession = await authenticateViaApi(request, getAccount("worker"));
+    const job = await createJobViaApi(request, ownerSession, {
+      title: uniqueJobTitle("Playwright owner cancel warning job"),
+    });
+
+    await applyToJobViaApi(request, workerSession, job.id, "Playwright owner cancellation warning application.", "155");
+    const application = await getJobApplicationForWorker(request, ownerSession.token, job.id, workerSession.userId);
+    await prepareAcceptancePaymentViaApi(request, ownerSession, job.id, application.id);
+    await updateJobStatusViaApi(request, ownerSession, application.id, job.id, 2);
+
+    await setAuthToken(page, ownerSession.token);
+    await page.goto(`/jobs/${job.id}`);
+
+    await page.evaluate(() => {
+      (window as typeof window & { __gumbootConfirmMessage?: string }).__gumbootConfirmMessage = "";
+      window.confirm = (message?: string) => {
+        (window as typeof window & { __gumbootConfirmMessage?: string }).__gumbootConfirmMessage = String(message ?? "");
+        return false;
+      };
+    });
+    await page.getByRole("button", { name: "Cancel job" }).click();
+    const message = await page.evaluate(() => (window as typeof window & { __gumbootConfirmMessage?: string }).__gumbootConfirmMessage || "");
+    expect(message).toContain("A $5 cancellation fee may apply after a job has been accepted and payment has been secured.");
+    expect(message).toContain("You’ll be refunded the job amount minus a $5 cancellation fee.");
+  });
+
+  test("worker sees the cancellation fee warning before cancelling an accepted job", async ({ page, request }) => {
+    const ownerSession = await authenticateViaApi(request, getAccount("owner"));
+    const workerSession = await authenticateViaApi(request, getAccount("worker"));
+    const job = await createJobViaApi(request, ownerSession, {
+      title: uniqueJobTitle("Playwright worker cancel warning job"),
+    });
+
+    await applyToJobViaApi(request, workerSession, job.id, "Playwright worker cancellation warning application.", "155");
+    const application = await getJobApplicationForWorker(request, ownerSession.token, job.id, workerSession.userId);
+    await prepareAcceptancePaymentViaApi(request, ownerSession, job.id, application.id);
+    await updateJobStatusViaApi(request, ownerSession, application.id, job.id, 2);
+
+    await setAuthToken(page, workerSession.token);
+    await page.goto(`/jobs/${job.id}`);
+
+    await page.evaluate(() => {
+      (window as typeof window & { __gumbootConfirmMessage?: string }).__gumbootConfirmMessage = "";
+      window.confirm = (message?: string) => {
+        (window as typeof window & { __gumbootConfirmMessage?: string }).__gumbootConfirmMessage = String(message ?? "");
+        return false;
+      };
+    });
+    await page.getByRole("button", { name: "Cancel job" }).click();
+    const message = await page.evaluate(() => (window as typeof window & { __gumbootConfirmMessage?: string }).__gumbootConfirmMessage || "");
+    expect(message).toContain("A $5 cancellation fee may apply after a job has been accepted and payment has been secured.");
+    expect(message).toContain("Cancelling after accepting may result in a $5 cancellation fee.");
+  });
+
+  test("job owner can release held payment after worker marks completion", async ({ page, request }) => {
+    const ownerSession = await authenticateViaApi(request, getAccount("owner"));
+    const workerSession = await authenticateViaApi(request, getAccount("worker"));
+    const job = await createJobViaApi(request, ownerSession, {
+      title: uniqueJobTitle("Playwright held payment job"),
+    });
+
+    await applyToJobViaApi(request, workerSession, job.id, "Playwright held payment application.", "165");
+    const application = await getJobApplicationForWorker(request, ownerSession.token, job.id, workerSession.userId);
+    await prepareAcceptancePaymentViaApi(request, ownerSession, job.id, application.id);
+    await updateJobStatusViaApi(request, ownerSession, application.id, job.id, 2);
+    await updateJobStatusViaApi(request, workerSession, application.id, job.id, 6);
+
+    await setAuthToken(page, ownerSession.token);
+    await page.goto(`/jobs/${job.id}/completion/${application.id}`);
+    await expect(page.getByText("Payment is being held securely")).toBeVisible();
+    await expect(page.getByText("The worker will receive", { exact: false })).toBeVisible();
+    await page.getByRole("button", { name: /Release payment/i }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/jobs/${job.id}/review/${application.id}$`));
   });
 
   test("notification click opens correct page", async ({ page, request }) => {

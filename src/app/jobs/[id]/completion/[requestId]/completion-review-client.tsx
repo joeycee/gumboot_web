@@ -24,10 +24,10 @@ import {
   type JobImageValue,
 } from "@/lib/jobFlow";
 import { resolveChatMediaUrl, resolveUserImageUrl } from "@/lib/messages";
-import { extractCardsFromResponse, getSavedCards, recordJobPayment } from "@/lib/payments";
+import { extractCardsFromResponse, getSavedCards, releaseHeldPayment } from "@/lib/payments";
 import { buildPublicProfileHref, fetchWorkerPublicProfile, type WorkerPublicProfileBody } from "@/lib/publicProfiles";
-import { stripePromise } from "@/lib/stripe";
 import { useMe } from "@/lib/useMe";
+import { getWorkerVerificationLabel, getWorkerVerificationStatus } from "@/lib/workerVerification";
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500&display=swap');
@@ -191,6 +191,30 @@ const styles = `
     font-weight: 400;
     line-height: 1.02;
   }
+  .jcr-verify-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 30px;
+    width: fit-content;
+    margin-top: 8px;
+    padding: 0 12px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .jcr-verify-badge.verified {
+    color: #dbeafe;
+    border: 1px solid rgba(96,165,250,0.4);
+    background: rgba(37,99,235,0.22);
+  }
+  .jcr-verify-badge.unverified {
+    color: rgba(229,229,229,0.82);
+    border: 1px solid rgba(229,229,229,0.12);
+    background: rgba(229,229,229,0.06);
+  }
   .jcr-mini {
     margin-top: 8px;
     display: flex;
@@ -343,6 +367,12 @@ function formatDateTime(value?: string | null) {
   }).format(date);
 }
 
+function getPaymentStatusLabel(status: string, canComplete: boolean, alreadyFinished: boolean) {
+  if (alreadyFinished || status === "7") return "Payment released";
+  if (["2", "3", "6"].includes(status) || canComplete) return "Payment is being held securely";
+  return getJobStatusLabel(status);
+}
+
 function getInitials(name: string) {
   return (
     name
@@ -456,6 +486,12 @@ export default function CompletionReviewClient({
   const workerAvatar = resolveUserImageUrl(worker?.image);
   const workerRating = toFiniteNumber(workerProfile?.ratingdata?.averageRating);
   const workerReviewCount = toFiniteNumber(workerProfile?.ratingdata?.count);
+  const workerVerificationBadge = useMemo(() => {
+    const directStatus = getWorkerVerificationStatus(worker);
+    if (directStatus) return directStatus;
+    const fallbackStatus = workerProfile?.verificationStatus?.badge;
+    return fallbackStatus === "verified" ? "verified" : fallbackStatus === "unverified" ? "unverified" : null;
+  }, [worker, workerProfile]);
   const afterImages = getWorkerUploadedImages(job?.image_after_job);
   const jobTitle = getJobTitle(job);
   const jobDescription = getJobDescription(job);
@@ -463,7 +499,6 @@ export default function CompletionReviewClient({
   const agreedPriceNumber = toMoneyNumber(agreedPrice);
   const serviceFee = roundMoney(agreedPriceNumber * 0.035);
   const customerTotal = roundMoney(agreedPriceNumber + serviceFee);
-  const workerNet = roundMoney(agreedPriceNumber - serviceFee);
   const submittedAt = offer?.updatedAt ?? offer?.createdAt ?? null;
   const profileHref = buildPublicProfileHref({ userId: workerId, jobId: requestId });
   const canMessage = Boolean(me?._id && (isOwner || me?._id === workerId));
@@ -485,33 +520,17 @@ export default function CompletionReviewClient({
     }
     if (!canComplete) return;
     if (!hasSavedCard) {
-      setError("Add a saved card before confirming payment for this completed job.");
+      setError("Add a saved card before you can release payment for this completed job.");
       return;
     }
 
     setActionBusy(true);
     setError(null);
     try {
-      const stripe = await stripePromise;
-      if (!stripe) {
-        throw new Error("Stripe is not configured for this environment.");
-      }
-
-      const paymentResponse = await recordJobPayment({
+      await releaseHeldPayment({
         jobId: job?._id || jobId,
+        jobRequestedId: requestId,
       });
-      const clientSecret = paymentResponse.body?.clientSecret;
-      if (!clientSecret) {
-        throw new Error("Missing Stripe client secret.");
-      }
-
-      const result = await stripe.confirmCardPayment(clientSecret);
-      if (result.error) {
-        throw new Error(result.error.message || "Payment failed.");
-      }
-      if (result.paymentIntent?.status !== "succeeded" && result.paymentIntent?.status !== "processing") {
-        throw new Error(`Payment status: ${result.paymentIntent?.status || "unknown"}`);
-      }
 
       await updateJobLifecycleStatus({
         jobRequested_id: requestId,
@@ -537,7 +556,7 @@ export default function CompletionReviewClient({
               <p className="jcr-kicker">Completed work review</p>
               <h1 className="jcr-title">Inspect submitted work</h1>
               <p className="jcr-subtitle">
-                Review the worker&apos;s completion proof, inspect the uploaded images, message them if needed, and then confirm the final payment.
+                Review the worker&apos;s completion proof, inspect the uploaded images, message them if needed, and then release payment to finish the job.
               </p>
             </div>
 
@@ -581,13 +600,9 @@ export default function CompletionReviewClient({
                     <div className="jcr-value">{formatMoney(customerTotal)}</div>
                   </div>
                   <div className="jcr-block">
-                    <div className="jcr-label">Worker receives</div>
-                    <div className="jcr-value">{formatMoney(workerNet)}</div>
-                  </div>
-                  <div className="jcr-block">
                     <div className="jcr-label">Payment status</div>
                     <div className="jcr-value">
-                      {alreadyFinished ? "Confirmed and paid" : canComplete ? "Awaiting customer sign-off" : getJobStatusLabel(offer.job_status)}
+                      {getPaymentStatusLabel(String(offer.job_status ?? ""), canComplete, alreadyFinished)}
                     </div>
                   </div>
                   <div className="jcr-block">
@@ -611,7 +626,7 @@ export default function CompletionReviewClient({
                 <div className="jcr-block">
                   <div className="jcr-label">Payment breakdown</div>
                   <div className="jcr-copy">
-                    The agreed offer is {formatMoney(agreedPrice)}. With a 3.5% service fee, the customer is charged {formatMoney(customerTotal)} and the worker should receive {formatMoney(workerNet)} in their wallet.
+                    The agreed offer is {formatMoney(agreedPrice)}. Gumboot is holding {formatMoney(customerTotal)} securely while the job is active, and you&apos;ll release it once the work is confirmed complete.
                   </div>
                 </div>
 
@@ -669,6 +684,12 @@ export default function CompletionReviewClient({
                     </div>
                     <div>
                       <h2 className="jcr-name">{workerName}</h2>
+                      {workerVerificationBadge ? (
+                        <div className={`jcr-verify-badge ${workerVerificationBadge}`}>
+                          <span>{workerVerificationBadge === "verified" ? "✓" : "•"}</span>
+                          <span>{getWorkerVerificationLabel(workerVerificationBadge)}</span>
+                        </div>
+                      ) : null}
                       <div className="jcr-mini">
                         <span className="jcr-stars">★ {workerRating.toFixed(1)}</span>
                         <span>{workerReviewCount} review{workerReviewCount === 1 ? "" : "s"}</span>
@@ -680,7 +701,7 @@ export default function CompletionReviewClient({
 
                 {!hasSavedCard && isOwner && String(offer.job_status ?? "") === "6" ? (
                   <div className="jcr-state">
-                    Add a saved card before confirming payment.
+                    Add a saved card before you can release payment for this completed job.
                     {" "}
                     <Link href={`/auth/signup/payment-setup?setup=card&required=1&next=${encodeURIComponent(`/jobs/${encodeURIComponent(job?._id || jobId)}/completion/${encodeURIComponent(requestId)}`)}`} style={{ color: "#fff", fontWeight: 700 }}>
                       Open card setup
@@ -694,7 +715,7 @@ export default function CompletionReviewClient({
                   </button>
                   {canComplete ? (
                     <button type="button" className="jcr-btn primary" onClick={handleCompleteJob} disabled={actionBusy}>
-                      {actionBusy ? "Processing payment..." : `Complete job • ${formatMoney(customerTotal)}`}
+                      {actionBusy ? "Releasing payment..." : `Release payment • ${formatMoney(customerTotal)}`}
                     </button>
                   ) : null}
                   {alreadyFinished ? (
