@@ -648,7 +648,11 @@ export default function ManageJobsPage() {
       setError(null);
       setSuccess(null);
       const response = await cancelJob(jobId);
-      const cancellationCharge = response.body?.cancellationCharge as { cancellationFeeStatus?: string } | undefined;
+      const cancellationCharge = (
+        response.body as
+          | { cancellationCharge?: { cancellationFeeStatus?: string } }
+          | undefined
+      )?.cancellationCharge;
       setSuccess(
         cancellationCharge?.cancellationFeeStatus === "collected"
           ? "Job cancelled. You’ll be refunded the job amount minus a $5 cancellation fee."

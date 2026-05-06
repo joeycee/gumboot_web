@@ -487,11 +487,15 @@ export default function CompletionReviewClient({
   const workerRating = toFiniteNumber(workerProfile?.ratingdata?.averageRating);
   const workerReviewCount = toFiniteNumber(workerProfile?.ratingdata?.count);
   const workerVerificationBadge = useMemo(() => {
-    const directStatus = getWorkerVerificationStatus(worker);
+    const directStatus = getWorkerVerificationStatus(
+      workerProfile?.workerDetails ?? workerProfile?.userDetail
+    );
+
     if (directStatus) return directStatus;
+
     const fallbackStatus = workerProfile?.verificationStatus?.badge;
     return fallbackStatus === "verified" ? "verified" : fallbackStatus === "unverified" ? "unverified" : null;
-  }, [worker, workerProfile]);
+  }, [workerProfile]);
   const afterImages = getWorkerUploadedImages(job?.image_after_job);
   const jobTitle = getJobTitle(job);
   const jobDescription = getJobDescription(job);

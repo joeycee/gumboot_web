@@ -1298,9 +1298,11 @@ export default function JobDetailsClient({ id }: { id: string }) {
         job_status: nextStatus,
       });
 
-      const cancellationCharge = response.body?.cancellationCharge as
-        | { cancellationFeeStatus?: string; refundAmount?: number; refundAmountMinor?: number }
-        | undefined;
+      const cancellationCharge = (
+        response.body as
+          | { cancellationCharge?: { cancellationFeeStatus?: string; refundAmount?: number; refundAmountMinor?: number } }
+          | undefined
+      )?.cancellationCharge;
 
       if (nextStatus === 5) {
         if (cancellationCharge?.cancellationFeeStatus === "due") {
@@ -1465,9 +1467,11 @@ export default function JobDetailsClient({ id }: { id: string }) {
     setWorkflowMessage(null);
     try {
       const response = await cancelManagedJob(jobId);
-      const cancellationCharge = response.body?.cancellationCharge as
-        | { cancellationFeeStatus?: string; refundAmount?: number }
-        | undefined;
+      const cancellationCharge = (
+        response.body as
+          | { cancellationCharge?: { cancellationFeeStatus?: string; refundAmount?: number } }
+          | undefined
+      )?.cancellationCharge;
 
       if (cancellationCharge?.cancellationFeeStatus === "collected") {
         setWorkflowMessage("Job cancelled. Your refund will be the job amount minus a $5 cancellation fee.");
