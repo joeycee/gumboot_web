@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Job } from "@/lib/jobs";
+import { formatJobPrice, isJobPriceUnsure, Job } from "@/lib/jobs";
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap');
@@ -780,8 +780,8 @@ function DrawerContent({
               ) : null}
               <div className="jdd-top-meta">
                 <span className="jdd-top-chip">{locationSummary}</span>
-                <span className={`jdd-top-chip price${job.price == null ? " unknown" : ""}`}>
-                  {job.price != null ? `$${job.price}` : "Price not set"}
+                <span className={`jdd-top-chip price${job.price == null || isJobPriceUnsure(job.priceAssured) ? " unknown" : ""}`}>
+                  {formatJobPrice(job.price, job.priceAssured, "???")}
                 </span>
               </div>
             </div>

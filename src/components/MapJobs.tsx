@@ -235,6 +235,41 @@ function MapJobsCanvas({
   resolveIconUrl: (iconPath?: string) => string;
 }) {
   const apiIsLoaded = useApiIsLoaded();
+  
+  // Function to group jobs by location and calculate offset positions for clustered markers
+  const getIconPosition = useCallback(
+    (job: Job, jobIndex: number) => {
+      // Tolerance for detecting same location (in degrees, ~0.0001° ≈ 10 meters)
+      const SAME_LOCATION_TOLERANCE = 0.0001;
+      
+      // Find all jobs at the same or very close location
+      const nearbyJobs = markerJobs.filter(
+        (otherJob) =>
+          Math.abs(otherJob.lat - job.lat) < SAME_LOCATION_TOLERANCE &&
+          Math.abs(otherJob.lng - job.lng) < SAME_LOCATION_TOLERANCE
+      );
+      
+      // If only one job at this location, use original position
+      if (nearbyJobs.length === 1) {
+        return { lat: job.lat, lng: job.lng };
+      }
+      
+      // Multiple jobs at same location - arrange in a circle around the original point
+      const currentJobIndexInCluster = nearbyJobs.findIndex((j) => j.id === job.id);
+      const totalInCluster = nearbyJobs.length;
+      const angle = (currentJobIndexInCluster / totalInCluster) * Math.PI * 2;
+      
+      // Offset distance in degrees (approximately 60 pixels at zoom level 11)
+      const offsetDistance = 0.0008;
+      
+      const offsetLat = job.lat + offsetDistance * Math.cos(angle);
+      const offsetLng = job.lng + offsetDistance * Math.sin(angle);
+      
+      return { lat: offsetLat, lng: offsetLng };
+    },
+    [markerJobs]
+  );
+
   const markerCircle = useMemo(() => {
     if (!apiIsLoaded || typeof window === "undefined" || !window.google?.maps) return null;
     return {
@@ -278,18 +313,21 @@ function MapJobsCanvas({
             zIndex={1}
           />
         ))}
-        {markerJobs.map((j) => (
-          <Marker
-            key={`${j.id}-icon`}
-            position={{ lat: j.lat, lng: j.lng }}
-            onClick={() => onSelect(j)}
-            icon={{
-              url: resolveIconUrl(j.jobTypeIconPath || j.imageUrl),
-              ...(markerIcon ?? {}),
-            }}
-            zIndex={2}
-          />
-        ))}
+        {markerJobs.map((j, index) => {
+          const iconPosition = getIconPosition(j, index);
+          return (
+            <Marker
+              key={`${j.id}-icon`}
+              position={{ lat: iconPosition.lat, lng: iconPosition.lng }}
+              onClick={() => onSelect(j)}
+              icon={{
+                url: resolveIconUrl(j.jobTypeIconPath || j.imageUrl),
+                ...(markerIcon ?? {}),
+              }}
+              zIndex={2}
+            />
+          );
+        })}
       </Map>
 
       <div className="mj-vignette" />

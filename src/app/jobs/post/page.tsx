@@ -254,6 +254,34 @@ const styles = `
     color: rgba(229,229,229,0.60);
     line-height: 1.6;
   }
+  .pj-check-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgba(229,229,229,0.14);
+    border-radius: 10px;
+    background: rgba(229,229,229,0.04);
+  }
+  .pj-check-row input {
+    width: 18px;
+    height: 18px;
+    margin-top: 1px;
+    accent-color: #26A69A;
+  }
+  .pj-check-title {
+    display: block;
+    color: #E5E5E5;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .pj-check-copy {
+    display: block;
+    margin-top: 3px;
+    color: rgba(229,229,229,0.62);
+    font-size: 12px;
+    line-height: 1.45;
+  }
   .pj-upload-input {
     position: absolute;
     width: 1px;
@@ -645,6 +673,7 @@ type PostJobDraft = {
   description?: string;
   jobTypeId?: string;
   budget?: string;
+  unsureCost?: boolean;
   dateMode?: DateMode;
   jobDate?: string;
   timeMode?: TimeMode;
@@ -898,6 +927,7 @@ export default function PostJobPage() {
   const [description, setDescription] = useState("");
   const [jobTypeId, setJobTypeId] = useState("");
   const [budget, setBudget] = useState("");
+  const [unsureCost, setUnsureCost] = useState(false);
   const [budgetInfoOpen, setBudgetInfoOpen] = useState(false);
 
   const [files, setFiles] = useState<File[]>([]);
@@ -935,6 +965,7 @@ export default function PostJobPage() {
       setDescription(draft.description ?? "");
       setJobTypeId(draft.jobTypeId ?? "");
       setBudget(draft.budget ?? "");
+      setUnsureCost(Boolean(draft.unsureCost));
       setDateMode(draft.dateMode ?? "exact");
       setJobDate(draft.jobDate ?? "");
       setTimeMode(draft.timeMode ?? "anytime");
@@ -1009,6 +1040,7 @@ export default function PostJobPage() {
       description,
       jobTypeId,
       budget,
+      unsureCost,
       dateMode,
       jobDate,
       timeMode,
@@ -1022,6 +1054,7 @@ export default function PostJobPage() {
   }, [
     addressLine,
     budget,
+    unsureCost,
     dateMode,
     description,
     draftHydrated,
@@ -1130,7 +1163,7 @@ export default function PostJobPage() {
   function canProceed() {
     if (step === 0) return title.trim().length >= 3 && description.trim().length >= 10;
     if (step === 1) return Boolean(jobTypeId);
-    if (step === 2) return Number(budget) > 0;
+    if (step === 2) return unsureCost || Number(budget) > 0;
     if (step === 3) return true;
     if (step === 4) return Boolean(jobDate) && (timeMode !== "exact-time" || Boolean(exactTime));
     if (step === 5) return Boolean(addressLine.trim()) && lat != null && lng != null;
@@ -1144,7 +1177,7 @@ export default function PostJobPage() {
       if (!title.trim()) return setError("Job title is required.");
       if (!description.trim()) return setError("Description is required.");
       if (!jobTypeId) return setError("Job type is required.");
-      if (!(Number(budget) > 0)) return setError("Price is required.");
+      if (!unsureCost && !(Number(budget) > 0)) return setError("Price is required.");
       if (!jobDate) return setError("Expiry date is required.");
       if (!addressLine.trim()) return setError("Address is required.");
       if (lat == null || lng == null) return setError("Pick an address suggestion so lat/lng are captured.");
@@ -1159,6 +1192,7 @@ export default function PostJobPage() {
           description,
           jobTypeId,
           budget,
+          unsureCost,
           dateMode,
           jobDate,
           timeMode,
@@ -1185,6 +1219,7 @@ export default function PostJobPage() {
           description,
           jobTypeId,
           budget,
+          unsureCost,
           dateMode,
           jobDate,
           timeMode,
@@ -1257,7 +1292,7 @@ export default function PostJobPage() {
         job_title: title.trim(),
         job_type: String(jobTypeId),
         address: String(addressId),
-        price: String(Number(budget)),
+        price: String(unsureCost ? 10 : Number(budget)),
         description: description.trim(),
         exp_date: jobDate,
         est_time: timeMode === "exact-time" ? exactTime : timeMode,
@@ -1268,7 +1303,7 @@ export default function PostJobPage() {
         date: jobDate,
         date_type: mapDateType(dateMode),
         shift_time: mapShiftTime(timeMode),
-        price_assured: "0",
+        price_assured: unsureCost ? "1" : "0",
         userId: me._id,
       };
 
@@ -1317,6 +1352,7 @@ export default function PostJobPage() {
     API_BASE,
     addressLine,
     budget,
+    unsureCost,
     dateMode,
     description,
     exactTime,
@@ -1525,7 +1561,23 @@ export default function PostJobPage() {
                   value={budget}
                   onChange={(e) => setBudget(e.target.value.replace(/[^\d.]/g, ""))}
                   placeholder="120"
+                  disabled={unsureCost}
                 />
+                <label className="pj-check-row">
+                  <input
+                    type="checkbox"
+                    checked={unsureCost}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setUnsureCost(checked);
+                      if (checked) setBudget("");
+                    }}
+                  />
+                  <span>
+                    <span className="pj-check-title">Unsure of the cost</span>
+                    <span className="pj-check-copy">Show this job budget as ??? and let workers send their offers.</span>
+                  </span>
+                </label>
                 <p className="pj-note" style={{ marginTop: 4 }}>
                   {selectedTypeName ? (
                     <>
@@ -1830,7 +1882,7 @@ export default function PostJobPage() {
                 <li><strong>Title:</strong> {title || "—"}</li>
                 <li><strong>Description:</strong> {description || "—"}</li>
                 <li><strong>Type:</strong> {selectedTypeName || "—"}</li>
-                <li><strong>Budget:</strong> {budget ? `$${budget}` : "—"}</li>
+                <li><strong>Budget:</strong> {unsureCost ? "???" : budget ? `$${budget}` : "—"}</li>
                 <li><strong>Images:</strong> {files.length}</li>
                 <li><strong>Expiry date:</strong> {jobDate ? prettyYMD(jobDate) : "—"} ({dateMode})</li>
                 <li>

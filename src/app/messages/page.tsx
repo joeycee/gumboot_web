@@ -1278,7 +1278,11 @@ export default function MessagesPage() {
           receiver_id: selectedConversation.otherUserId,
           type: "2",
           message: uploadedPath,
+          file: uploadedPath,
+          image: uploadedPath,
+          attachment: uploadedPath,
           fileName: image.fileName,
+          file_name: image.fileName,
         });
       }
 

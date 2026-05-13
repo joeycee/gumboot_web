@@ -7,7 +7,7 @@ import { Shell } from "@/components/Shell";
 import { MapJobs } from "@/components/MapJobs";
 import { hasCompletedIdentityVerification } from "@/lib/accountStatus";
 import { api } from "@/lib/api";
-import { Job, normalizeJobs } from "@/lib/jobs";
+import { formatJobPrice, isJobPriceUnsure, Job, normalizeJobs } from "@/lib/jobs";
 import { useMe } from "@/lib/useMe";
 
 type ViewMode = "map" | "list";
@@ -896,7 +896,7 @@ export default function HomeClient() {
                       <div className="job-row-meta">
                         <span className="job-row-location">{getLocationSummary(j)}</span>
                         <span className="job-row-dot">·</span>
-                        <span className="job-row-price">{j.price != null ? `$${j.price}` : "—"}</span>
+                        <span className="job-row-price">{formatJobPrice(j.price, j.priceAssured, "???")}</span>
                       </div>
                     </div>
                   </div>
@@ -1018,8 +1018,8 @@ export default function HomeClient() {
                           <div className="list-card-type">{j.jobTypeName || "General"}</div>
                           <div className="list-card-location">{getLocationSummary(j)}</div>
                           <div className="list-card-meta">
-                            <div className={`list-card-price${j.price == null ? " unknown" : ""}`}>
-                              {j.price != null ? `$${j.price}` : "Price unknown"}
+                            <div className={`list-card-price${j.price == null || isJobPriceUnsure(j.priceAssured) ? " unknown" : ""}`}>
+                              {formatJobPrice(j.price, j.priceAssured, "???")}
                             </div>
                             <div className="list-card-open">Open</div>
                           </div>

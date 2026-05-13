@@ -3,6 +3,7 @@ export type Job = {
   jobStatus?: string;
   title: string;
   price?: number;
+  priceAssured?: string;
   lat: number;
   lng: number;
   jobTypeName?: string;
@@ -40,6 +41,17 @@ function pickJobTypeIconPath(value: unknown): string | undefined {
   }
 
   return undefined;
+}
+
+export function isJobPriceUnsure(priceAssured: unknown) {
+  const value = String(priceAssured ?? "").trim().toLowerCase();
+  return value === "1" || value === "true";
+}
+
+export function formatJobPrice(price: unknown, priceAssured: unknown, unknownLabel = "???") {
+  if (isJobPriceUnsure(priceAssured)) return unknownLabel;
+  if (price == null || price === "") return "Price unknown";
+  return `$${price}`;
 }
 
 function toNumber(v: unknown): number | null {
@@ -128,6 +140,7 @@ export function normalizeJobs(apiBody: unknown): Job[] {
       const lng = lng1 ?? lng2 ?? lng3 ?? lng4;
 
       const price = toNumber(row.price ?? row.job_price ?? row.amount ?? row.budget) ?? undefined;
+      const priceAssured = row.price_assured != null ? String(row.price_assured) : undefined;
       const jobType = (row.job_type ?? null) as
         | { name?: unknown; image?: unknown; icon?: unknown; iconPath?: unknown; jobTypeIconPath?: unknown; job_type_icon?: unknown }
         | null;
@@ -185,6 +198,7 @@ export function normalizeJobs(apiBody: unknown): Job[] {
         jobStatus,
         title,
         price,
+        priceAssured,
         lat: resolvedLat,
         lng: resolvedLng,
         jobTypeName: typeof jobType?.name === "string" ? jobType.name : undefined,

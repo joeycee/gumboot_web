@@ -62,12 +62,19 @@ type RawMessage = Record<string, unknown> & {
   constant_id?: number;
   message?: string;
   file?: string;
+  image?: string;
+  attachment?: string;
   thumbnail?: string;
   type?: string;
+  file_type?: string;
+  message_type?: string;
+  chat_type?: string | number;
   readStatus?: string | number;
   createdAt?: string;
   updatedAt?: string;
   fileName?: string;
+  file_name?: string;
+  filename?: string;
   sender?: RawUser[];
   receiver?: RawUser[];
   unread_count?: number;
@@ -84,19 +91,37 @@ function getParticipantName(user?: RawUser) {
 }
 
 export function normalizeMessage(raw: RawMessage): ChatMessage {
+  const normalizedType =
+    asString(raw.type) ||
+    asString(raw.message_type) ||
+    asString(raw.file_type) ||
+    (typeof raw.chat_type === "number" || typeof raw.chat_type === "string"
+      ? String(raw.chat_type)
+      : "");
+  const normalizedFile =
+    asString(raw.file) ||
+    asString(raw.image) ||
+    asString(raw.attachment) ||
+    undefined;
+  const normalizedFileName =
+    asString(raw.fileName) ||
+    asString(raw.file_name) ||
+    asString(raw.filename) ||
+    undefined;
+
   return {
     _id: asString(raw._id),
     sender_id: asString(raw.sender_id),
     receiver_id: asString(raw.receiver_id),
     constant_id: typeof raw.constant_id === "number" ? raw.constant_id : undefined,
     message: asString(raw.message),
-    file: asString(raw.file) || undefined,
+    file: normalizedFile,
     thumbnail: asString(raw.thumbnail) || undefined,
-    type: asString(raw.type),
+    type: normalizedType,
     readStatus: typeof raw.readStatus === "number" || typeof raw.readStatus === "string" ? raw.readStatus : undefined,
     createdAt: asString(raw.createdAt) || undefined,
     updatedAt: asString(raw.updatedAt) || undefined,
-    fileName: asString(raw.fileName) || undefined,
+    fileName: normalizedFileName,
   };
 }
 

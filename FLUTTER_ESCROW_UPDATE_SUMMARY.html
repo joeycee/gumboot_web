@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gumboot Flutter Escrow Update Summary</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1f2933;
+      --muted: #52606d;
+      --line: #d9e2ec;
+      --accent: #1d4ed8;
+      --accent-soft: #dbeafe;
+      --panel: #f8fafc;
+      --success: #0f766e;
+      --warn: #b45309;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--ink);
+      background: white;
+      line-height: 1.5;
+    }
+
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 44px 56px;
+    }
+
+    h1, h2, h3 { margin: 0; }
+
+    h1 {
+      font-size: 30px;
+      line-height: 1.1;
+      margin-bottom: 10px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 15px;
+      margin-bottom: 28px;
+    }
+
+    .callout {
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--accent);
+      background: var(--panel);
+      border-radius: 12px;
+      margin-bottom: 24px;
+    }
+
+    .section {
+      margin-top: 24px;
+    }
+
+    .section h2 {
+      font-size: 20px;
+      margin-bottom: 10px;
+      color: var(--accent);
+    }
+
+    .section p {
+      margin: 0 0 10px;
+    }
+
+    ul, ol {
+      margin: 8px 0 0 20px;
+      padding: 0;
+    }
+
+    li { margin: 6px 0; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 14px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 16px;
+      background: #fff;
+    }
+
+    .card h3 {
+      font-size: 15px;
+      margin-bottom: 8px;
+    }
+
+    .label {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 5px 8px;
+      border-radius: 999px;
+      margin-bottom: 10px;
+    }
+
+    .label.success {
+      color: var(--success);
+      background: #ccfbf1;
+    }
+
+    .label.warn {
+      color: var(--warn);
+      background: #fef3c7;
+    }
+
+    code {
+      font-family: "Courier New", monospace;
+      font-size: 0.95em;
+      background: #eef2f7;
+      padding: 1px 5px;
+      border-radius: 6px;
+    }
+
+    .footer {
+      margin-top: 30px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media print {
+      .page {
+        padding: 24px 28px 36px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <h1>Gumboot Flutter Update Summary</h1>
+    <p class="subtitle">
+      Summary of the payment-flow and related product changes already completed in Gumboot Web and Gumboot Backend,
+      so the Flutter app can be updated to match the live product behavior.
+    </p>
+
+    <div class="callout">
+      <strong>Main change:</strong> Gumboot now secures the customer payment when an offer is accepted, holds it safely on the platform while the job is active, and only releases it when the customer confirms the work is complete.
+    </div>
+
+    <section class="section">
+      <h2>1. Payment flow has changed</h2>
+      <p>Old flow:</p>
+      <ol>
+        <li>Worker sends offer.</li>
+        <li>Owner accepts offer.</li>
+        <li>Worker finishes job.</li>
+        <li>Owner is charged on the completion screen.</li>
+      </ol>
+      <p>New flow:</p>
+      <ol>
+        <li>Worker sends offer.</li>
+        <li>Owner accepts offer.</li>
+        <li>Owner payment is secured immediately and held by Gumboot.</li>
+        <li>Worker completes the job.</li>
+        <li>Owner reviews the work and releases payment.</li>
+      </ol>
+    </section>
+
+    <section class="section">
+      <h2>2. New Flutter accept-offer flow</h2>
+      <ol>
+        <li>Owner taps accept.</li>
+        <li>App checks for a saved card.</li>
+        <li>App calls <code>POST /api/billing/acceptance-payment-intent</code>.</li>
+        <li>If a <code>clientSecret</code> is returned, Flutter must complete Stripe confirmation.</li>
+        <li>Only after payment is secured should Flutter call <code>POST /api/updateJobStatus</code> with <code>job_status = 2</code>.</li>
+      </ol>
+      <p>The offer must not be treated as accepted until both payment hold and status update succeed.</p>
+    </section>
+
+    <section class="section">
+      <h2>3. New Flutter completion flow</h2>
+      <ol>
+        <li>Worker still marks the job completed with <code>job_status = 6</code>.</li>
+        <li>No card charge happens at that step anymore.</li>
+        <li>Owner reviews completed work.</li>
+        <li>Owner taps release payment.</li>
+        <li>App calls <code>POST /api/billing/release-held-payment</code>.</li>
+        <li>After release succeeds, app calls <code>POST /api/updateJobStatus</code> with <code>job_status = 7</code>.</li>
+      </ol>
+    </section>
+
+    <section class="section">
+      <h2>4. Backend endpoints to use</h2>
+      <div class="grid">
+        <div class="card">
+          <div class="label success">New endpoint</div>
+          <h3><code>POST /api/billing/acceptance-payment-intent</code></h3>
+          <p>Used before accepting an offer. This secures the owner payment and may return a Stripe <code>clientSecret</code> for Flutter to confirm.</p>
+        </div>
+        <div class="card">
+          <div class="label success">New endpoint</div>
+          <h3><code>POST /api/billing/release-held-payment</code></h3>
+          <p>Used when the owner confirms completed work. This releases funds already being held by Gumboot.</p>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <div class="label warn">Changed behavior</div>
+          <h3><code>POST /api/updateJobStatus</code></h3>
+          <p>When accepting an offer with <code>job_status = 2</code>, the backend now refuses the request unless the payment is already secured.</p>
+        </div>
+        <div class="card">
+          <div class="label warn">Important</div>
+          <h3>Acceptance is now a two-step flow</h3>
+          <p>Flutter must no longer call <code>updateJobStatus(2)</code> by itself as the whole accept flow.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>5. Customer-facing wording already changed</h2>
+      <ul>
+        <li>On accept: “Your payment will be held securely by Gumboot until the job is completed.”</li>
+        <li>After accept: “Payment secured”</li>
+        <li>While active: “Payment is being held securely”</li>
+        <li>On completion: “Release payment”</li>
+        <li>After release: “Payment released”</li>
+        <li>For workers: “You’ll be paid once the customer confirms the job is complete.”</li>
+      </ul>
+      <p>The Flutter app should match this wording where possible for consistency with web.</p>
+    </section>
+
+    <section class="section">
+      <h2>6. Cancellation fee support was added</h2>
+      <p>If a job has already been accepted and payment is already being held:</p>
+      <ul>
+        <li>If the employer cancels, the employer is refunded minus a NZ$5 cancellation fee.</li>
+        <li>If the worker cancels, the employer gets a full refund and the worker is charged or owes the NZ$5 fee instead.</li>
+        <li>If cancellation happens before payment is held, no cancellation fee applies.</li>
+        <li>If payment was already released, no automatic cancellation fee is applied.</li>
+      </ul>
+      <p>Flutter should show the same cancellation warning copy before confirming cancellation.</p>
+    </section>
+
+    <section class="section">
+      <h2>7. Supporting UI changes already made on web</h2>
+      <ul>
+        <li>After an offer is accepted, the owner now sees a quick “Message user” action.</li>
+        <li>The completion review screen no longer shows worker payout numbers in the customer-facing payment breakdown.</li>
+        <li>Payment language across offer review, job details, completion review, and notifications was updated to be simpler and more trust-building.</li>
+      </ul>
+    </section>
+
+    <section class="section">
+      <h2>8. Suggested Flutter implementation checklist</h2>
+      <ol>
+        <li>Update offer acceptance to: payment intent -> Stripe confirm if needed -> <code>updateJobStatus(2)</code>.</li>
+        <li>Update completion confirmation to: <code>release-held-payment</code> -> <code>updateJobStatus(7)</code>.</li>
+        <li>Remove any old “charge card on completion” code.</li>
+        <li>Add missing-card handling before acceptance.</li>
+        <li>Add cancellation-fee warning text on accepted-job cancellations.</li>
+        <li>Mirror the updated user-facing wording from web.</li>
+      </ol>
+    </section>
+
+    <section class="section">
+      <h2>9. Testing checklist for Flutter</h2>
+      <ul>
+        <li>Owner with saved card accepts offer and the offer becomes accepted.</li>
+        <li>Owner without saved card is pushed into card setup before acceptance can finish.</li>
+        <li>Acceptance path works when Stripe requires confirmation.</li>
+        <li>Worker marking completion does not trigger a second charge.</li>
+        <li>Owner releasing payment finishes the job correctly.</li>
+        <li>Duplicate release attempts do not double-pay.</li>
+        <li>Cancellation fee behavior matches employer-cancel and worker-cancel rules.</li>
+      </ul>
+    </section>
+
+    <div class="footer">
+      Prepared from the Gumboot Web and Gumboot Backend changes already completed in this section of work.
+    </div>
+  </main>
+</body>
+</html>

@@ -46,6 +46,7 @@ type JobRecord = {
   job_title: string;
   description: string;
   price: string;
+  price_assured?: string;
   exp_date: string;
   est_time: string;
   exact_time?: string;
@@ -256,6 +257,7 @@ function serializeJobDetails(store: Store, job: JobRecord) {
       shift_time: job.shift_time ?? "",
       job_status: job.job_status,
       price: job.price,
+      price_assured: job.price_assured ?? "0",
       offered_price: job.price,
       userId: owner ? serializeAccount(owner) : job.userId,
       address: address
@@ -290,6 +292,7 @@ function serializeManagedJob(store: Store, job: JobRecord) {
     job_title: job.job_title,
     description: job.description,
     price: job.price,
+    price_assured: job.price_assured ?? "0",
     job_status: job.job_status,
     exp_date: job.exp_date,
     est_time: job.est_time,
@@ -540,6 +543,7 @@ async function handleRequest(request: Request, slug: string[]) {
       job_title: String(body.job_title ?? "Untitled job"),
       description: String(body.description ?? ""),
       price: String(body.price ?? "0"),
+      price_assured: String(body.price_assured ?? "0"),
       exp_date: String(body.exp_date ?? new Date().toISOString().slice(0, 10)),
       est_time: String(body.est_time ?? "anytime"),
       exact_time: String(body.exact_time ?? ""),
@@ -572,6 +576,7 @@ async function handleRequest(request: Request, slug: string[]) {
         _id: job._id,
         title: job.job_title,
         price: Number(job.price),
+        price_assured: job.price_assured ?? "0",
         description: job.description,
         address: address
           ? { address: address.address, city: "Auckland", location: { coordinates: [address.longitude, address.latitude] } }

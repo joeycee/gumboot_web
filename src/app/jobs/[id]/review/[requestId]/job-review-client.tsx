@@ -148,6 +148,7 @@ const styles = `
   .jrv-stars {
     display: flex;
     gap: 8px;
+    flex-wrap: wrap;
   }
   .jrv-star-btn {
     min-width: 48px;
@@ -163,6 +164,10 @@ const styles = `
     background: rgba(246,196,83,0.18);
     border-color: rgba(246,196,83,0.34);
     color: #F6C453;
+  }
+  .jrv-rating-note {
+    font-size: 13px;
+    color: rgba(229,229,229,0.72);
   }
   .jrv-actions {
     display: flex;
@@ -226,6 +231,14 @@ function getInitials(name: string) {
       .map((part) => part[0]?.toUpperCase() ?? "")
       .join("") || "GB"
   );
+}
+
+function getRatingLabel(value: number) {
+  if (value >= 5) return "Excellent";
+  if (value >= 4) return "Good";
+  if (value >= 3) return "Okay";
+  if (value >= 2) return "Poor";
+  return "Very poor";
 }
 
 export default function JobReviewClient({
@@ -375,12 +388,17 @@ export default function JobReviewClient({
                           <button
                             key={value}
                             type="button"
-                            className={`jrv-star-btn${rating === value ? " active" : ""}`}
+                            className={`jrv-star-btn${value <= rating ? " active" : ""}`}
                             onClick={() => setRating(value)}
+                            aria-label={`${value} star${value === 1 ? "" : "s"}`}
+                            aria-pressed={value <= rating}
                           >
                             ★
                           </button>
                         ))}
+                      </div>
+                      <div className="jrv-rating-note" aria-live="polite">
+                        {rating} star{rating === 1 ? "" : "s"} selected: {getRatingLabel(rating)}
                       </div>
                     </div>
 

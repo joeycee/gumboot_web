@@ -54,6 +54,7 @@ type JobDetails = {
   exact_time?: string; shift_time?: string; est_time?: string;
   job_status?: string | number;
   price?: string | number;
+  price_assured?: string | number;
   offered_price?: string | number;
   job_type?: JobTypeValue;
   address?: AddressValue;
@@ -728,6 +729,11 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
 
+function isJobPriceUnsure(priceAssured: unknown) {
+  const value = String(priceAssured ?? "").trim().toLowerCase();
+  return value === "1" || value === "true";
+}
+
 function hasApplicationIdentity(application: unknown): application is JobApplication {
   if (!isObject(application)) return false;
   const record = application as Record<string, unknown>;
@@ -752,6 +758,7 @@ function normalizeJobDetails(payload: JobDetailsEnvelope): JobDetails | null {
   return {
     ...details,
     price: details.price ?? normalizedPrice,
+    price_assured: details.price_assured ?? (bodyRecord.getdetails as { price_assured?: string | number } | undefined)?.price_assured ?? (body as { price_assured?: string | number }).price_assured,
     offered_price: normalizedPrice,
     image_before_job: Array.isArray(details.image_before_job)
       ? details.image_before_job
@@ -1179,10 +1186,12 @@ export default function JobDetailsClient({ id }: { id: string }) {
     return job?.price ?? null;
   }, [currentWorkerRequest?.offered_price, job?.price, posterActiveRequest?.offered_price]);
   const priceLabel   = useMemo(() => {
+    const hasOfferPrice = Boolean(currentWorkerRequest || posterActiveRequest);
+    if (!hasOfferPrice && isJobPriceUnsure(job?.price_assured)) return "???";
     const rawPrice = effectivePrice;
     if (rawPrice == null || rawPrice === "") return null;
     return `$${rawPrice}`;
-  }, [effectivePrice]);
+  }, [currentWorkerRequest, effectivePrice, job?.price_assured, posterActiveRequest]);
   const priceCaption = currentWorkerRequest || posterActiveRequest ? "Offered price" : "Listed price";
 
   const posterRating =
