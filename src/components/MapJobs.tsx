@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState } from "react";
 import { APIProvider, Map, Marker, useApiIsLoaded } from "@vis.gl/react-google-maps";
 import { Job } from "@/lib/jobs";
 
@@ -235,39 +235,62 @@ function MapJobsCanvas({
   resolveIconUrl: (iconPath?: string) => string;
 }) {
   const apiIsLoaded = useApiIsLoaded();
-  
-  // Function to group jobs by location and calculate offset positions for clustered markers
-  const getIconPosition = useCallback(
-    (job: Job, jobIndex: number) => {
-      // Tolerance for detecting same location (in degrees, ~0.0001° ≈ 10 meters)
+  const [zoom, setZoom] = useState(11);
+
+  const getSpreadPosition = useCallback(
+    (job: Job) => {
       const SAME_LOCATION_TOLERANCE = 0.0001;
-      
-      // Find all jobs at the same or very close location
       const nearbyJobs = markerJobs.filter(
         (otherJob) =>
           Math.abs(otherJob.lat - job.lat) < SAME_LOCATION_TOLERANCE &&
           Math.abs(otherJob.lng - job.lng) < SAME_LOCATION_TOLERANCE
       );
-      
-      // If only one job at this location, use original position
-      if (nearbyJobs.length === 1) {
+
+      if (nearbyJobs.length <= 1) {
         return { lat: job.lat, lng: job.lng };
       }
-      
-      // Multiple jobs at same location - arrange in a circle around the original point
-      const currentJobIndexInCluster = nearbyJobs.findIndex((j) => j.id === job.id);
-      const totalInCluster = nearbyJobs.length;
-      const angle = (currentJobIndexInCluster / totalInCluster) * Math.PI * 2;
-      
-      // Offset distance in degrees (approximately 60 pixels at zoom level 11)
-      const offsetDistance = 0.0008;
-      
-      const offsetLat = job.lat + offsetDistance * Math.cos(angle);
-      const offsetLng = job.lng + offsetDistance * Math.sin(angle);
-      
-      return { lat: offsetLat, lng: offsetLng };
+
+      const currentJobIndexInCluster = nearbyJobs.findIndex((item) => item.id === job.id);
+      if (currentJobIndexInCluster < 0) {
+        return { lat: job.lat, lng: job.lng };
+      }
+
+      const effectiveZoom = Number.isFinite(zoom) ? zoom : 11;
+      const degreesPerPixel = 360 / (256 * Math.pow(2, effectiveZoom));
+      const lngDegreesPerPixel = degreesPerPixel / Math.max(Math.cos((job.lat * Math.PI) / 180), 0.2);
+
+      const baseSeparationPx = 46;
+      let remainingIndex = currentJobIndexInCluster;
+      let ring = 0;
+
+      while (true) {
+        if (ring === 0) {
+          if (remainingIndex === 0) break;
+          remainingIndex -= 1;
+          ring += 1;
+          continue;
+        }
+
+        const ringCapacity = Math.max(6 * ring, Math.ceil((2 * Math.PI * baseSeparationPx * ring) / baseSeparationPx));
+        if (remainingIndex < ringCapacity) break;
+        remainingIndex -= ringCapacity;
+        ring += 1;
+      }
+
+      if (ring === 0) {
+        return { lat: job.lat, lng: job.lng };
+      }
+
+      const ringCapacity = Math.max(6 * ring, Math.ceil((2 * Math.PI * baseSeparationPx * ring) / baseSeparationPx));
+      const angle = (remainingIndex / ringCapacity) * Math.PI * 2;
+      const radiusPx = baseSeparationPx * ring;
+
+      return {
+        lat: job.lat + Math.sin(angle) * radiusPx * degreesPerPixel,
+        lng: job.lng + Math.cos(angle) * radiusPx * lngDegreesPerPixel,
+      };
     },
-    [markerJobs]
+    [markerJobs, zoom]
   );
 
   const markerCircle = useMemo(() => {
@@ -304,17 +327,23 @@ function MapJobsCanvas({
         defaultZoom={11}
         disableDefaultUI={false}
         gestureHandling="greedy"
+        onCameraChanged={(event) => {
+          const nextZoom = event.detail.zoom;
+          if (typeof nextZoom === "number" && Number.isFinite(nextZoom)) {
+            setZoom(nextZoom);
+          }
+        }}
       >
         {markerJobs.map((j) => (
           <Marker
             key={`${j.id}-circle`}
-            position={{ lat: j.lat, lng: j.lng }}
+            position={getSpreadPosition(j)}
             icon={markerCircle ?? undefined}
             zIndex={1}
           />
         ))}
-        {markerJobs.map((j, index) => {
-          const iconPosition = getIconPosition(j, index);
+        {markerJobs.map((j) => {
+          const iconPosition = getSpreadPosition(j);
           return (
             <Marker
               key={`${j.id}-icon`}
