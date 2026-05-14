@@ -310,9 +310,18 @@ export default function JobReviewClient({
   const workerAvatar = resolveUserImageUrl(worker?.image);
   const jobTitle = getJobTitle(job);
   const ratedByMe = Number(job?.ratedbyme ?? 0) === 1;
+  const ownerId = getJobOwnerId(job);
+  const owner = job?.userId && typeof job.userId !== "string" ? job.userId : null;
+  const ownerName = getUserFullName(owner) || "Customer";
+  const ownerAvatar = resolveUserImageUrl(owner?.image);
+  const reviewTargetId = isOwner ? workerId : ownerId;
+  const reviewTargetName = isOwner ? workerName : ownerName;
+  const reviewTargetLabel = isOwner ? "worker" : "customer";
+  const reviewAvatar = isOwner ? workerAvatar : ownerAvatar;
+  const canReview = Boolean(reviewTargetId && (isOwner || me?._id === workerId));
 
   async function handleSubmit() {
-    if (!isOwner || !workerId || !job?._id) return;
+    if (!canReview || !reviewTargetId || !job?._id) return;
     if (!comment.trim()) {
       setError("Please add a short review comment.");
       return;
@@ -322,12 +331,12 @@ export default function JobReviewClient({
     setMessage(null);
     try {
       await addReview({
-        reciver_userId: workerId,
+        reciver_userId: reviewTargetId,
         rating,
         comment: comment.trim(),
         jobId: job._id,
       });
-      setMessage(`Review submitted for ${workerName}.`);
+      setMessage(`Review submitted for ${reviewTargetName}.`);
       router.push(`/jobs/${encodeURIComponent(job._id || jobId)}/completion/${encodeURIComponent(requestId)}`);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to submit review.");
@@ -344,9 +353,9 @@ export default function JobReviewClient({
           <section className="jrv-card">
             <div className="jrv-head">
               <p className="jrv-kicker">Post-completion review</p>
-              <h1 className="jrv-title">Rate the completed work</h1>
+              <h1 className="jrv-title">Rate the completed job</h1>
               <p className="jrv-subtitle">
-                This uses the existing Gumboot review contract after the job has been confirmed and paid.
+                This prompt follows the current backend review contract after the job reaches its finished state.
               </p>
             </div>
 
@@ -356,22 +365,22 @@ export default function JobReviewClient({
               <div className="jrv-body"><div className="jrv-state error">{error}</div></div>
             ) : !job || !offer ? (
               <div className="jrv-body"><div className="jrv-state error">This review is no longer available.</div></div>
-            ) : !isOwner ? (
-              <div className="jrv-body"><div className="jrv-state error">Only the customer who owns this job can submit this review.</div></div>
+            ) : !canReview ? (
+              <div className="jrv-body"><div className="jrv-state error">Only the accepted worker or the customer for this completed job can submit a review here.</div></div>
             ) : (
               <div className="jrv-body">
                 <div className="jrv-summary">
                   <div className="jrv-avatar" aria-hidden="true">
-                    {workerAvatar ? (
+                    {reviewAvatar ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={workerAvatar} alt={workerName} />
+                      <img src={reviewAvatar} alt={reviewTargetName} />
                     ) : (
-                      <span className="jrv-avatar-fallback">{getInitials(workerName)}</span>
+                      <span className="jrv-avatar-fallback">{getInitials(reviewTargetName)}</span>
                     )}
                   </div>
                   <div>
-                    <h2 className="jrv-name">{workerName}</h2>
-                    <div className="jrv-job">{jobTitle}</div>
+                    <h2 className="jrv-name">{reviewTargetName}</h2>
+                    <div className="jrv-job">{jobTitle} · Reviewing the {reviewTargetLabel}</div>
                   </div>
                 </div>
 
@@ -408,7 +417,7 @@ export default function JobReviewClient({
                         className="jrv-textarea"
                         value={comment}
                         onChange={(event) => setComment(event.target.value)}
-                        placeholder="Share how the job went, what stood out, and whether you would work with them again."
+                        placeholder={`Share how it was working with this ${reviewTargetLabel}, what stood out, and whether you would work with them again.`}
                       />
                     </div>
 

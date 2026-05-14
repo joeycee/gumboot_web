@@ -1222,6 +1222,7 @@ export default function JobDetailsClient({ id }: { id: string }) {
   const reviewTargetName = isPoster
     ? [activeWorker?.firstname, activeWorker?.lastname].filter(Boolean).join(" ").trim() || "worker"
     : resolvedPosterName || "poster";
+  const reviewRequestId = isPoster ? posterActiveRequest?._id ?? "" : currentWorkerRequest?._id ?? "";
   const canChatAsWorker = chatReadyStatuses.has(currentWorkerStatus);
   const canChatAsPoster = chatReadyStatuses.has(posterActiveStatus) && Boolean(activeWorkerId);
   const canReview = Boolean(me?._id && reviewTargetId && (currentWorkerStatus === "7" || posterActiveStatus === "7") && !ratedByMe);
@@ -2202,6 +2203,14 @@ export default function JobDetailsClient({ id }: { id: string }) {
                           />
                         </label>
                         <div className="jdc-inline-actions">
+                          {reviewRequestId ? (
+                            <Link
+                              href={`/jobs/${encodeURIComponent(job?._id || id)}/review/${encodeURIComponent(reviewRequestId)}`}
+                              className="jdc-inline-btn"
+                            >
+                              Open review page
+                            </Link>
+                          ) : null}
                           <button
                             type="button"
                             className="jdc-inline-btn primary"

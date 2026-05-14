@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { hasCompletedIdentityVerification } from "@/lib/accountStatus";
 import { getApiBaseUrl, getApiOrigin } from "@/lib/api";
+import { fetchPublicReviews, type PublicProfileReview } from "@/lib/publicProfiles";
 import { useLocalDevOtpBypassEnabled } from "@/lib/useLocalDevOtpBypass";
 import { getWorkerVerificationLabel, getWorkerVerificationStatus } from "@/lib/workerVerification";
 
@@ -38,6 +39,7 @@ type ProfileResponse = {
   body: { profiledata: ProfileData; ratingdata: RatingData };
 };
 type ProfileCustomFields = { skills: string[]; tools: string[] };
+type ReviewLoadState = "idle" | "loading" | "ready" | "error";
 
 const buildImageUrl = (p?: string) =>
   p ? (p.startsWith("http") ? p : `${API_BASE}${p}`) : "/placeholder.png";
@@ -106,6 +108,27 @@ function readProfileCustomFields(): ProfileCustomFields {
 function writeProfileCustomFields(fields: ProfileCustomFields) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(PROFILE_CUSTOM_FIELDS_KEY, JSON.stringify(fields));
+}
+
+function getFullName(user?: { firstname?: string; lastname?: string; email?: string } | null) {
+  return [user?.firstname, user?.lastname].filter(Boolean).join(" ").trim() || user?.email || "Anonymous user";
+}
+
+function formatReviewDate(value?: string) {
+  if (!value) return "Recently";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Recently";
+  return new Intl.DateTimeFormat("en-NZ", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+function getReviewRoleLabel(role?: string | number) {
+  if (String(role ?? "") === "1") return "Client review";
+  if (String(role ?? "") === "2") return "Worker review";
+  return "Review";
 }
 
 /**
@@ -468,12 +491,67 @@ const styles = `
     padding: 0 0 0 4px;
   }
 
+  .pp-review-list {
+    display: grid;
+    gap: 12px;
+  }
+  .pp-review-card {
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: var(--glass-1);
+    padding: 14px;
+    display: grid;
+    gap: 10px;
+  }
+  .pp-review-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .pp-review-author {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-1);
+  }
+  .pp-review-meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    color: var(--text-3);
+    font-size: 12px;
+  }
+  .pp-review-pill {
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: rgba(229,229,229,0.04);
+    padding: 5px 9px;
+  }
+  .pp-review-comment {
+    margin: 0;
+    color: var(--text-2);
+    line-height: 1.7;
+    font-size: 13px;
+  }
+  .pp-review-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .pp-review-status {
+    color: var(--text-3);
+    font-size: 12px;
+  }
+
   /* Responsive */
   @media (max-width: 560px) {
     .pp-container { padding: 28px 20px 34px; border-radius: 16px; }
     .pp-header { gap: 16px; }
     .pp-avatar { width: 76px; height: 76px; }
     .pp-name { font-size: 26px; }
+    .pp-review-head { flex-direction: column; }
   }
 `;
 
@@ -508,6 +586,9 @@ export default function ProfilePage() {
   const [customTools, setCustomTools] = useState<string[]>(
     () => readProfileCustomFields().tools
   );
+  const [recentReviews, setRecentReviews] = useState<PublicProfileReview[]>([]);
+  const [reviewsState, setReviewsState] = useState<ReviewLoadState>("idle");
+  const [reviewsCount, setReviewsCount] = useState(0);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -516,7 +597,7 @@ export default function ProfilePage() {
 
       const token = getAuthToken();
 
-    if (isDevLocalSession(token, devBypassEnabled)) {
+      if (isDevLocalSession(token, devBypassEnabled)) {
         setData(readDevProfileBody());
         return;
       }
@@ -560,7 +641,7 @@ export default function ProfilePage() {
   }, [devBypassEnabled, router]);
 
   useEffect(() => {
-    fetchProfile();
+    void fetchProfile();
   }, [fetchProfile]);
 
   const profile = data?.profiledata;
@@ -568,11 +649,52 @@ export default function ProfilePage() {
   const canOfferOnJobs = hasCompletedIdentityVerification(profile);
   const verificationBadge = getWorkerVerificationStatus(profile);
 
+  useEffect(() => {
+    if (!profile?._id) {
+      setRecentReviews([]);
+      setReviewsCount(0);
+      setReviewsState("idle");
+      return;
+    }
+
+    if (profile._id === "dev-local-user") {
+      setRecentReviews([]);
+      setReviewsCount(0);
+      setReviewsState("ready");
+      return;
+    }
+
+    let cancelled = false;
+    setReviewsState("loading");
+
+    fetchPublicReviews(profile._id, 3)
+      .then((response) => {
+        if (cancelled) return;
+        const reviewData = response.body?.reviewData ?? [];
+        setRecentReviews(reviewData);
+        setReviewsCount(response.body?.totalCount ?? reviewData.length);
+        setReviewsState("ready");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRecentReviews([]);
+        setReviewsCount(0);
+        setReviewsState("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?._id]);
+
   const fullName = useMemo(
     () =>
       [profile?.firstname, profile?.lastname].filter(Boolean).join(" ") || "Unknown User",
     [profile?.firstname, profile?.lastname]
   );
+  const reviewPreviewTitle = reviewsCount > 0
+    ? `${reviewsCount} review${reviewsCount === 1 ? "" : "s"} on your profile`
+    : "No reviews on your profile yet";
 
   const displayedSkills = useMemo(() => {
     const apiSkills = (profile?.skill ?? []).map((s) => s.name).filter(Boolean);
@@ -687,6 +809,9 @@ export default function ProfilePage() {
                   </div>
 
                   <div className="pp-header-actions">
+                    <Link className="pp-link-btn" href="/profile/reviews">
+                      Reviews
+                    </Link>
                     <Link className="pp-link-btn" href="/profile/payments">
                       Wallet & payments
                     </Link>
@@ -712,6 +837,57 @@ export default function ProfilePage() {
               </div>
 
               <p className="pp-bio">{profile.bio || "No bio added yet."}</p>
+
+              <div className="pp-divider" />
+
+              <div className="pp-section">
+                <div className="pp-review-actions" style={{ marginBottom: 14 }}>
+                  <div>
+                    <p className="pp-section-label" style={{ marginBottom: 6 }}>Recent reviews</p>
+                    <div className="pp-review-status">{reviewPreviewTitle}</div>
+                  </div>
+                  <Link className="pp-link-btn" href="/profile/reviews">
+                    View all reviews
+                  </Link>
+                </div>
+                {reviewsState === "loading" ? (
+                  <p className="pp-empty">Loading your latest reviews…</p>
+                ) : reviewsState === "error" ? (
+                  <p className="pp-empty">Recent reviews could not be loaded right now.</p>
+                ) : recentReviews.length > 0 ? (
+                  <div className="pp-review-list">
+                    {recentReviews.map((review) => {
+                      const authorName = getFullName(review.userId);
+                      const reviewRating = Number(review.rating ?? 0);
+                      return (
+                        <article
+                          key={review._id ?? `${authorName}-${review.createdAt ?? ""}`}
+                          className="pp-review-card"
+                        >
+                          <div className="pp-review-head">
+                            <div>
+                              <div className="pp-review-author">{authorName}</div>
+                              <div className="pp-review-meta">
+                                <span className="pp-review-pill">{getReviewRoleLabel(review.rater_role)}</span>
+                                <span>{formatReviewDate(review.createdAt)}</span>
+                              </div>
+                            </div>
+                            <div className="pp-rating-row">
+                              <RatingStars value={reviewRating} />
+                              <span className="pp-rating-value">{reviewRating.toFixed(1)}</span>
+                            </div>
+                          </div>
+                          <p className="pp-review-comment">
+                            {review.comment?.trim() || "No written comment was added to this review."}
+                          </p>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="pp-empty">Your most recent reviews will appear here after completed jobs are rated.</p>
+                )}
+              </div>
 
               <div className="pp-divider" />
 

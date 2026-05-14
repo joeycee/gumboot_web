@@ -876,6 +876,13 @@ function getJobPrice(job?: PublicProfileJob | null) {
   return `$${value}`;
 }
 
+function getJobRatingMeta(job?: PublicProfileJob | null) {
+  const rating = getRatingValue(job?.rating);
+  const count = getRatingValue(job?.ratingCount);
+  if (count <= 0) return null;
+  return `${rating.toFixed(1)} stars${count > 0 ? ` · ${count} review${count === 1 ? "" : "s"}` : ""}`;
+}
+
 function extractCompletedJob(item?: PublicProfileJob | WorkerCompletedJob | null) {
   if (!item) return null;
   if ("jobId" in item) {
@@ -1323,6 +1330,7 @@ export default function PublicProfileClient({ userId }: { userId: string }) {
                           const jobTitle = job?.job_title?.trim() || "Untitled job";
                           const jobTypeName = getJobTypeName(job);
                           const priceLabel = getJobPrice(job);
+                          const ratingMeta = getJobRatingMeta(job);
 
                           return (
                             <article className="pubp-job" key={job?._id ?? `${jobTitle}-${index}`}>
@@ -1344,6 +1352,7 @@ export default function PublicProfileClient({ userId }: { userId: string }) {
                                 <div className="pubp-job-meta">
                                   <span className="pubp-job-pill">{priceLabel}</span>
                                   {jobTypeName ? <span className="pubp-job-pill">{jobTypeName}</span> : null}
+                                  {ratingMeta ? <span className="pubp-job-pill">{ratingMeta}</span> : null}
                                   {job?.job_status != null ? <span className="pubp-job-pill">Status {job.job_status}</span> : null}
                                 </div>
 

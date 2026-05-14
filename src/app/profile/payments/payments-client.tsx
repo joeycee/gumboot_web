@@ -436,6 +436,10 @@ function normalizeStatus(value: unknown) {
   return { label: "Rejected", className: "rejected" };
 }
 
+function formatCountLabel(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 export default function PaymentsClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -593,7 +597,19 @@ export default function PaymentsClient() {
     await loadAll();
   }
 
-  const workerTransactions = workerHistory?.modifiedTransactions ?? [];
+  const workerTransactions = useMemo(
+    () => workerHistory?.modifiedTransactions ?? [],
+    [workerHistory?.modifiedTransactions]
+  );
+  const walletContributionItems = useMemo(
+    () =>
+      [...workerTransactions].sort((a, b) => {
+        const aTime = new Date(a.jobTransaction?.createdAt ?? 0).getTime();
+        const bTime = new Date(b.jobTransaction?.createdAt ?? 0).getTime();
+        return bTime - aTime;
+      }),
+    [workerTransactions]
+  );
 
   return (
     <>
@@ -646,6 +662,45 @@ export default function PaymentsClient() {
                       </div>
                     </div>
                   </div>
+
+                  {isWorker ? (
+                    <div className="payarea-section">
+                      <div className="payarea-section-head">
+                        <h2 className="payarea-section-title">Completed jobs in this wallet</h2>
+                        <span className="payarea-pill">{formatCountLabel(walletContributionItems.length, "job")}</span>
+                      </div>
+                      {walletContributionItems.length > 0 ? (
+                        <div className="payarea-list">
+                          {walletContributionItems.map((item, index) => {
+                            const title = item.jobTransaction?.jobId?.job_title?.trim() || "Completed job";
+                            const grossAmount = item.jobPrice ?? item.jobTransaction?.jobId?.price ?? item.jobTransaction?.amount ?? 0;
+                            const extraCost = item.add_Cost ?? 0;
+                            const adminCharge = item.adminCharges ?? 0;
+                            const walletCredit = item.workerFinalAmount ?? item.jobTransaction?.amount ?? 0;
+                            return (
+                              <div className="payarea-item" key={item.jobTransaction?._id ?? `wallet-contribution-${index}`}>
+                                <div className="payarea-item-top">
+                                  <div>
+                                    <div className="payarea-item-title">{title}</div>
+                                    <div className="payarea-item-sub">{formatDate(item.jobTransaction?.createdAt)}</div>
+                                  </div>
+                                  <div className="payarea-item-title">{formatMoney(walletCredit)}</div>
+                                </div>
+                                <div className="payarea-row">
+                                  <div className="payarea-mini">Job total: {formatMoney(grossAmount)}</div>
+                                  <div className="payarea-mini">Extra costs: {formatMoney(extraCost)}</div>
+                                  <div className="payarea-mini">Admin fee: {formatMoney(adminCharge)}</div>
+                                  <div className="payarea-mini">Wallet credit: {formatMoney(walletCredit)}</div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="payarea-empty">No completed jobs have been credited to this wallet yet.</div>
+                      )}
+                    </div>
+                  ) : null}
 
                   <div className="payarea-section">
                     <div className="payarea-section-head">

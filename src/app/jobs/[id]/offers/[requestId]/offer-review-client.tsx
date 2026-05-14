@@ -531,6 +531,13 @@ function toFiniteNumber(value?: string | number | null) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function formatCompletedJobRating(value?: string | number | null, count?: string | number | null) {
+  const rating = toFiniteNumber(value);
+  const reviewCount = toFiniteNumber(count);
+  if (reviewCount <= 0) return null;
+  return `${rating.toFixed(1)} stars · ${reviewCount} review${reviewCount === 1 ? "" : "s"}`;
+}
+
 export default function OfferReviewClient({ jobId, requestId }: { jobId: string; requestId: string }) {
   const router = useRouter();
   const { user: meUser, loading: meLoading } = useMe();
@@ -888,12 +895,17 @@ export default function OfferReviewClient({ jobId, requestId }: { jobId: string;
                               const completedTitle = completedJob.jobId?.job_title?.trim() || "Completed job";
                               const completedPrice = completedJob.jobId?.offered_price ?? completedJob.jobId?.price ?? "";
                               const completedDescription = completedJob.jobId?.description?.trim() || "No extra job description available.";
+                              const completedRating = formatCompletedJobRating(
+                                completedJob.jobId?.rating,
+                                completedJob.jobId?.ratingCount
+                              );
                               return (
                                 <div className="ofr-work-item" key={completedJob._id ?? `${completedTitle}-${completedJob.createdAt ?? ""}`}>
                                   <div className="ofr-work-head">
                                     <div className="ofr-work-name">{completedTitle}</div>
                                     <div className="ofr-stars">{formatMoney(completedPrice)}</div>
                                   </div>
+                                  {completedRating ? <div className="ofr-work-copy">{completedRating}</div> : null}
                                   <div className="ofr-work-copy">
                                     {completedDescription}
                                   </div>

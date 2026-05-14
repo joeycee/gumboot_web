@@ -477,6 +477,8 @@ async function handleRequest(request: Request, slug: string[]) {
                 description: job.description,
                 createdAt: job.createdAt,
                 job_status: job.job_status,
+                rating: 5,
+                ratingCount: 3,
                 image: [{ url: "/job-types/lawn-mowing.jpg" }],
                 job_type: store.jobTypes.find((jobType) => jobType._id === job.job_type) ?? { _id: job.job_type, name: "General" },
               }

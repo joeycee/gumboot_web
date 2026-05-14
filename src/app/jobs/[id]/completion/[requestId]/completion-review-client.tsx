@@ -509,6 +509,7 @@ export default function CompletionReviewClient({
   const canComplete = isOwner && String(offer?.job_status ?? "") === "6";
   const alreadyFinished = String(offer?.job_status ?? "") === "7";
   const isParticipant = Boolean(me?._id && (isOwner || me?._id === workerId));
+  const reviewTargetLabel = isOwner ? "worker" : "customer";
 
   async function openChat() {
     if (!workerId || !canMessage) return;
@@ -715,7 +716,7 @@ export default function CompletionReviewClient({
 
                 <div className="jcr-actions">
                   <button type="button" className="jcr-btn" onClick={openChat} disabled={!canMessage}>
-                    Message user
+                    {isOwner ? "Message worker" : "Message customer"}
                   </button>
                   {canComplete ? (
                     <button type="button" className="jcr-btn primary" onClick={handleCompleteJob} disabled={actionBusy}>
@@ -724,7 +725,7 @@ export default function CompletionReviewClient({
                   ) : null}
                   {alreadyFinished ? (
                     <Link className="jcr-link-btn" href={`/jobs/${encodeURIComponent(job._id || jobId)}/review/${encodeURIComponent(requestId)}`}>
-                      Leave review
+                      Review {reviewTargetLabel}
                     </Link>
                   ) : null}
                 </div>

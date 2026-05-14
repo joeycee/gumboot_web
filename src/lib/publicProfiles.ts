@@ -48,6 +48,8 @@ export type PublicProfileJob = {
   job_title?: string;
   price?: string | number;
   offered_price?: string | number;
+  rating?: string | number;
+  ratingCount?: string | number;
   description?: string;
   createdAt?: string;
   job_status?: string | number;
