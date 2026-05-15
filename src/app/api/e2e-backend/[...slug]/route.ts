@@ -674,6 +674,17 @@ async function handleRequest(request: Request, slug: string[]) {
         return fail("Secure payment before accepting this offer");
       }
     }
+    if (nextStatus === 7) {
+      const releasedTransaction = Object.values(store.transactions).find(
+        (transaction) =>
+          transaction.jobId === application.jobId &&
+          transaction.acceptedRequestId === applicationId &&
+          transaction.paymentPhase === "released"
+      );
+      if (!releasedTransaction) {
+        return fail("Release payment before marking this job complete");
+      }
+    }
 
     application.job_status = nextStatus;
     application.updatedAt = new Date().toISOString();

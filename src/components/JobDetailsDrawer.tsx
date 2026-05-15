@@ -808,6 +808,11 @@ function DrawerContent({
 
           <div className="jdd-divider" />
           <p className="jdd-section-label">About this job</p>
+          {job.toolsRequired ? (
+            <div className="jdd-schedule-row" style={{ marginBottom: 12 }}>
+              <span className="jdd-schedule-chip">Workers must provide their own tools.</span>
+            </div>
+          ) : null}
           <p className="jdd-description">{job.description || "No description provided."}</p>
 
           <div className="jdd-divider" />

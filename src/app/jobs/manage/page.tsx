@@ -508,6 +508,7 @@ export default function ManageJobsPage() {
   const [selectedJobId, setSelectedJobId] = useState("");
   const [jobTitle, setJobTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [toolsRequired, setToolsRequired] = useState(false);
   const [price, setPrice] = useState("");
   const [expDate, setExpDate] = useState("");
   const [estTime, setEstTime] = useState("");
@@ -574,6 +575,12 @@ export default function ManageJobsPage() {
     if (!selectedJob) return;
     setJobTitle(selectedJob.job_title ?? "");
     setDescription(selectedJob.description ?? "");
+    setToolsRequired(
+      selectedJob.tools_required === true ||
+      selectedJob.tools_required === 1 ||
+      selectedJob.tools_required === "1" ||
+      selectedJob.tools_required === "true"
+    );
     setPrice(String(selectedJob.price ?? ""));
     setExpDate(selectedJob.exp_date ? String(selectedJob.exp_date).slice(0, 10) : "");
     setEstTime(selectedJob.est_time ?? "");
@@ -602,6 +609,7 @@ export default function ManageJobsPage() {
         jobId: selectedJobId,
         job_title: jobTitle,
         description,
+        tools_required: toolsRequired,
         price,
         exp_date: expDate,
         est_time: estTime,
@@ -887,6 +895,24 @@ export default function ManageJobsPage() {
                   placeholder="If you will provide anything for this job please state here."
                   disabled={selectedJobLocked}
                 />
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    marginTop: 12,
+                    fontSize: 14,
+                    color: "rgba(255,255,255,0.82)",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={toolsRequired}
+                    onChange={(e) => setToolsRequired(e.target.checked)}
+                    disabled={selectedJobLocked}
+                  />
+                  Workers must provide their own tools?.
+                </label>
               </div>
 
               <div className="jm-fields">

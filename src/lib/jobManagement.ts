@@ -5,6 +5,7 @@ export type ManagedJob = {
   _id?: string;
   job_title?: string;
   description?: string;
+  tools_required?: boolean | string | number;
   price?: string | number;
   job_status?: string | number;
   exp_date?: string;
@@ -40,6 +41,7 @@ export async function editJob(payload: {
   jobId: string;
   job_title?: string;
   description?: string;
+  tools_required?: boolean;
   price?: string;
   exp_date?: string;
   est_time?: string;
@@ -51,6 +53,7 @@ export async function editJob(payload: {
   form.set("jobId", payload.jobId);
   if (payload.job_title?.trim()) form.set("job_title", payload.job_title.trim());
   if (payload.description?.trim()) form.set("description", payload.description.trim());
+  if (typeof payload.tools_required === "boolean") form.set("tools_required", String(payload.tools_required));
   if (payload.price?.trim()) form.set("price", payload.price.trim());
   if (payload.exp_date?.trim()) form.set("exp_date", payload.exp_date.trim());
   if (payload.est_time?.trim()) form.set("est_time", payload.est_time.trim());

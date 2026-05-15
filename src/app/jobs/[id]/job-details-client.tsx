@@ -50,6 +50,7 @@ type JobDetails = {
   _id?: string; id?: string;
   title?: string; job_title?: string;
   description?: string; job_description?: string;
+  tools_required?: boolean | string | number;
   exp_date?: string; date?: string;
   exact_time?: string; shift_time?: string; est_time?: string;
   job_status?: string | number;
@@ -1143,6 +1144,11 @@ export default function JobDetailsClient({ id }: { id: string }) {
 
   const title        = job?.job_title || job?.title || "Untitled Job";
   const description  = job?.job_description || job?.description || "No description provided.";
+  const toolsRequired =
+    job?.tools_required === true ||
+    job?.tools_required === 1 ||
+    job?.tools_required === "1" ||
+    job?.tools_required === "true";
   const dateLabel    = formatDate(job?.exp_date || job?.date || null);
   const timeLabel    = getTimeLabel(job);
   const status       = job?.job_status != null ? String(job.job_status) : "";
@@ -1609,6 +1615,25 @@ export default function JobDetailsClient({ id }: { id: string }) {
                   </div>
 
                   <div className="jdc-desc-label">About this job</div>
+                  {toolsRequired ? (
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        minHeight: 34,
+                        padding: "0 12px",
+                        borderRadius: 999,
+                        border: "1px solid rgba(32,151,189,0.28)",
+                        background: "rgba(32,151,189,0.12)",
+                        color: "rgba(234,234,234,0.92)",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        marginBottom: 12,
+                      }}
+                    >
+                      Workers must provide their own tools.
+                    </div>
+                  ) : null}
                   <p className="jdc-desc">{description}</p>
 
                   {/* ── Compact image gallery ── */}

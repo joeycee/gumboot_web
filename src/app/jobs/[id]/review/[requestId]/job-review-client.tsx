@@ -318,7 +318,8 @@ export default function JobReviewClient({
   const reviewTargetName = isOwner ? workerName : ownerName;
   const reviewTargetLabel = isOwner ? "worker" : "customer";
   const reviewAvatar = isOwner ? workerAvatar : ownerAvatar;
-  const canReview = Boolean(reviewTargetId && (isOwner || me?._id === workerId));
+  const paymentReleased = String(offer?.job_status ?? job?.job_status ?? "") === "7";
+  const canReview = Boolean(reviewTargetId && paymentReleased && (isOwner || me?._id === workerId));
 
   async function handleSubmit() {
     if (!canReview || !reviewTargetId || !job?._id) return;
@@ -366,7 +367,7 @@ export default function JobReviewClient({
             ) : !job || !offer ? (
               <div className="jrv-body"><div className="jrv-state error">This review is no longer available.</div></div>
             ) : !canReview ? (
-              <div className="jrv-body"><div className="jrv-state error">Only the accepted worker or the customer for this completed job can submit a review here.</div></div>
+              <div className="jrv-body"><div className="jrv-state error">{paymentReleased ? "Only the accepted worker or the customer for this completed job can submit a review here." : "Payment must be released before reviews can be submitted."}</div></div>
             ) : (
               <div className="jrv-body">
                 <div className="jrv-summary">

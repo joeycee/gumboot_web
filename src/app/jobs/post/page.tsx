@@ -671,6 +671,7 @@ type PostJobDraft = {
   step?: number;
   title?: string;
   description?: string;
+  toolsRequired?: boolean;
   jobTypeId?: string;
   budget?: string;
   unsureCost?: boolean;
@@ -925,6 +926,7 @@ export default function PostJobPage() {
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [toolsRequired, setToolsRequired] = useState(false);
   const [jobTypeId, setJobTypeId] = useState("");
   const [budget, setBudget] = useState("");
   const [unsureCost, setUnsureCost] = useState(false);
@@ -963,6 +965,7 @@ export default function PostJobPage() {
       );
       setTitle(draft.title ?? "");
       setDescription(draft.description ?? "");
+      setToolsRequired(Boolean(draft.toolsRequired));
       setJobTypeId(draft.jobTypeId ?? "");
       setBudget(draft.budget ?? "");
       setUnsureCost(Boolean(draft.unsureCost));
@@ -1038,6 +1041,7 @@ export default function PostJobPage() {
       step,
       title,
       description,
+      toolsRequired,
       jobTypeId,
       budget,
       unsureCost,
@@ -1067,6 +1071,7 @@ export default function PostJobPage() {
     pendingResumeSubmit,
     step,
     timeMode,
+    toolsRequired,
     title,
   ]);
 
@@ -1190,6 +1195,7 @@ export default function PostJobPage() {
           step: steps.length - 1,
           title,
           description,
+          toolsRequired,
           jobTypeId,
           budget,
           unsureCost,
@@ -1217,6 +1223,7 @@ export default function PostJobPage() {
           step: steps.length - 1,
           title,
           description,
+          toolsRequired,
           jobTypeId,
           budget,
           unsureCost,
@@ -1298,7 +1305,7 @@ export default function PostJobPage() {
         est_time: timeMode === "exact-time" ? exactTime : timeMode,
         latitude: String(lat),
         longitude: String(lng),
-        tools_required: false,
+        tools_required: toolsRequired,
         isUrgent: dateMode === "urgent" ? "1" : "0",
         date: jobDate,
         date_type: mapDateType(dateMode),
@@ -1367,6 +1374,7 @@ export default function PostJobPage() {
     resumePath,
     router,
     timeMode,
+    toolsRequired,
     title,
   ]);
 
@@ -1467,6 +1475,17 @@ export default function PostJobPage() {
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Describe exactly what needs to be done. If you will provide anything for this job please state here."
                 />
+                <label
+                  className="pj-help"
+                  style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, color: "#dbe7ef" }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={toolsRequired}
+                    onChange={(e) => setToolsRequired(e.target.checked)}
+                  />
+                  Workers must provide their own tools?.
+                </label>
               </div>
             </div>
           )}

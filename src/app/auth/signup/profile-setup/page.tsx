@@ -67,12 +67,33 @@ const styles = `
     background: rgba(42,52,57,0.52);
     padding: 16px;
   }
+  .ps-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
   .ps-panel-title {
     font-size: 11px;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: rgba(229,229,229,0.42);
-    margin-bottom: 14px;
+    margin-bottom: 0;
+  }
+  .ps-info-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 1px solid rgba(229,229,229,0.16);
+    background: rgba(229,229,229,0.08);
+    color: #E5E5E5;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .ps-info-btn:hover {
+    background: rgba(229,229,229,0.14);
   }
   .ps-field { margin-bottom: 12px; }
   .ps-label {
@@ -166,6 +187,39 @@ const styles = `
     margin-top: 16px;
     flex-wrap: wrap;
   }
+  .ps-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(14, 19, 22, 0.68);
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    z-index: 60;
+  }
+  .ps-modal {
+    width: min(100%, 460px);
+    border-radius: 18px;
+    border: 1px solid rgba(229,229,229,0.10);
+    background: #334046;
+    box-shadow: 0 22px 60px rgba(0,0,0,0.38);
+    padding: 20px;
+  }
+  .ps-modal-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 26px;
+    line-height: 1.1;
+    margin-bottom: 10px;
+  }
+  .ps-modal-copy {
+    font-size: 14px;
+    line-height: 1.7;
+    color: rgba(229,229,229,0.78);
+  }
+  .ps-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
+  }
 `;
 
 function formatFileName(file: File | null) {
@@ -208,6 +262,7 @@ export default function ProfileSetupPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [showIdInfo, setShowIdInfo] = useState(false);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -277,7 +332,18 @@ export default function ProfileSetupPage() {
 
           <form onSubmit={handleSubmit}>
             <section className="ps-panel">
-              <h2 className="ps-panel-title">Identity and profile</h2>
+              <div className="ps-panel-head">
+                <h2 className="ps-panel-title">Identity and profile</h2>
+                <button
+                  aria-label="Identity verification info"
+                  aria-haspopup="dialog"
+                  className="ps-info-btn"
+                  onClick={() => setShowIdInfo(true)}
+                  type="button"
+                >
+                  i
+                </button>
+              </div>
               <div className="ps-field">
                 <label className="ps-label">Bio</label>
                 <textarea
@@ -352,6 +418,28 @@ export default function ProfileSetupPage() {
           </form>
         </section>
       </div>
+      {showIdInfo ? (
+        <div
+          className="ps-modal-backdrop"
+          onClick={() => setShowIdInfo(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Identity verification info"
+        >
+          <div className="ps-modal" onClick={(event) => event.stopPropagation()}>
+            <h2 className="ps-modal-title">ID Verification</h2>
+            <p className="ps-modal-copy">
+              A valid ID document is required to apply for jobs on Gumboot, a selfie is also needed so we can verify
+              that it is your ID. An admin will verify your ID but once uploaded you can apply for jobs.
+            </p>
+            <div className="ps-modal-actions">
+              <button className="ps-btn ps-btn-primary" onClick={() => setShowIdInfo(false)} type="button">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

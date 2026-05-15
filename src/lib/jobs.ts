@@ -4,6 +4,7 @@ export type Job = {
   title: string;
   price?: number;
   priceAssured?: string;
+  toolsRequired?: boolean;
   lat: number;
   lng: number;
   jobTypeName?: string;
@@ -141,6 +142,11 @@ export function normalizeJobs(apiBody: unknown): Job[] {
 
       const price = toNumber(row.price ?? row.job_price ?? row.amount ?? row.budget) ?? undefined;
       const priceAssured = row.price_assured != null ? String(row.price_assured) : undefined;
+      const toolsRequired =
+        row.tools_required === true ||
+        row.tools_required === 1 ||
+        row.tools_required === "1" ||
+        row.tools_required === "true";
       const jobType = (row.job_type ?? null) as
         | { name?: unknown; image?: unknown; icon?: unknown; iconPath?: unknown; jobTypeIconPath?: unknown; job_type_icon?: unknown }
         | null;
@@ -199,6 +205,7 @@ export function normalizeJobs(apiBody: unknown): Job[] {
         title,
         price,
         priceAssured,
+        toolsRequired,
         lat: resolvedLat,
         lng: resolvedLng,
         jobTypeName: typeof jobType?.name === "string" ? jobType.name : undefined,
