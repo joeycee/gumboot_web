@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useCallback, useState } from "react";
-import { APIProvider, Map, Marker, useApiIsLoaded } from "@vis.gl/react-google-maps";
+import { APIProvider, Map as GoogleMap, Marker, useApiIsLoaded } from "@vis.gl/react-google-maps";
 import { Job } from "@/lib/jobs";
 
 const styles = `
@@ -236,62 +236,83 @@ function MapJobsCanvas({
 }) {
   const apiIsLoaded = useApiIsLoaded();
   const [zoom, setZoom] = useState(11);
+  const MARKER_ICON_SIZE_PX = 38;
 
-  const getSpreadPosition = useCallback(
-    (job: Job) => {
-      const SAME_LOCATION_TOLERANCE = 0.0001;
-      const nearbyJobs = markerJobs.filter(
-        (otherJob) =>
-          Math.abs(otherJob.lat - job.lat) < SAME_LOCATION_TOLERANCE &&
-          Math.abs(otherJob.lng - job.lng) < SAME_LOCATION_TOLERANCE
-      );
+  const markerLayout = useMemo(() => {
+    const effectiveZoom = Number.isFinite(zoom) ? zoom : 11;
+    const degreesPerPixel = 360 / (256 * Math.pow(2, effectiveZoom));
+    const getLngDegreesPerPixel = (lat: number) =>
+      degreesPerPixel / Math.max(Math.cos((lat * Math.PI) / 180), 0.2);
+    const zoomSpreadFactor = Math.max(0.38, Math.min(1, effectiveZoom / 14));
+    const markerSpacingPx = Math.max(18, Math.round(MARKER_ICON_SIZE_PX * zoomSpreadFactor));
 
-      if (nearbyJobs.length <= 1) {
-        return { lat: job.lat, lng: job.lng };
-      }
+    const getPixelDistance = (a: Job, b: Job) => {
+      const averageLat = (a.lat + b.lat) / 2;
+      const latPx = Math.abs(a.lat - b.lat) / degreesPerPixel;
+      const lngPx = Math.abs(a.lng - b.lng) / getLngDegreesPerPixel(averageLat);
+      return Math.hypot(latPx, lngPx);
+    };
 
-      const currentJobIndexInCluster = nearbyJobs.findIndex((item) => item.id === job.id);
-      if (currentJobIndexInCluster < 0) {
-        return { lat: job.lat, lng: job.lng };
-      }
+    const visited = new Set<string>();
+    const layoutMap = new Map<string, { lat: number; lng: number; zIndex: number }>();
 
-      const effectiveZoom = Number.isFinite(zoom) ? zoom : 11;
-      const degreesPerPixel = 360 / (256 * Math.pow(2, effectiveZoom));
-      const lngDegreesPerPixel = degreesPerPixel / Math.max(Math.cos((job.lat * Math.PI) / 180), 0.2);
+    for (const seedJob of markerJobs) {
+      if (visited.has(seedJob.id)) continue;
 
-      const baseSeparationPx = 46;
-      let remainingIndex = currentJobIndexInCluster;
-      let ring = 0;
+      const cluster: Job[] = [];
+      const queue = [seedJob];
+      visited.add(seedJob.id);
 
-      while (true) {
-        if (ring === 0) {
-          if (remainingIndex === 0) break;
-          remainingIndex -= 1;
-          ring += 1;
-          continue;
+      while (queue.length > 0) {
+        const current = queue.shift();
+        if (!current) continue;
+        cluster.push(current);
+
+        for (const candidate of markerJobs) {
+          if (visited.has(candidate.id)) continue;
+          if (getPixelDistance(current, candidate) < markerSpacingPx) {
+            visited.add(candidate.id);
+            queue.push(candidate);
+          }
         }
-
-        const ringCapacity = Math.max(6 * ring, Math.ceil((2 * Math.PI * baseSeparationPx * ring) / baseSeparationPx));
-        if (remainingIndex < ringCapacity) break;
-        remainingIndex -= ringCapacity;
-        ring += 1;
       }
 
-      if (ring === 0) {
-        return { lat: job.lat, lng: job.lng };
+      if (cluster.length === 1) {
+        layoutMap.set(cluster[0].id, {
+          lat: cluster[0].lat,
+          lng: cluster[0].lng,
+          zIndex: 1000,
+        });
+        continue;
       }
 
-      const ringCapacity = Math.max(6 * ring, Math.ceil((2 * Math.PI * baseSeparationPx * ring) / baseSeparationPx));
-      const angle = (remainingIndex / ringCapacity) * Math.PI * 2;
-      const radiusPx = baseSeparationPx * ring;
+      const clusteredJobs = [...cluster].sort((a, b) => {
+        if (a.lat !== b.lat) return b.lat - a.lat;
+        if (a.lng !== b.lng) return a.lng - b.lng;
+        return a.id.localeCompare(b.id);
+      });
 
-      return {
-        lat: job.lat + Math.sin(angle) * radiusPx * degreesPerPixel,
-        lng: job.lng + Math.cos(angle) * radiusPx * lngDegreesPerPixel,
+      const buildVerticalOffset = (index: number) => {
+        if (index === 0) return 0;
+        const layer = Math.ceil(index / 2);
+        const direction = index % 2 === 1 ? -1 : 1;
+        return direction * layer * markerSpacingPx;
       };
-    },
-    [markerJobs, zoom]
-  );
+
+      for (const [index, job] of clusteredJobs.entries()) {
+        const verticalOffsetPx = buildVerticalOffset(index);
+        const latOffset = verticalOffsetPx * degreesPerPixel;
+
+        layoutMap.set(job.id, {
+          lat: job.lat + latOffset,
+          lng: job.lng,
+          zIndex: 1000 - index,
+        });
+      }
+    }
+
+    return layoutMap;
+  }, [markerJobs, zoom]);
 
   const markerCircle = useMemo(() => {
     if (!apiIsLoaded || typeof window === "undefined" || !window.google?.maps) return null;
@@ -322,7 +343,7 @@ function MapJobsCanvas({
         </div>
       ) : null}
 
-      <Map
+      <GoogleMap
         defaultCenter={center}
         defaultZoom={11}
         disableDefaultUI={false}
@@ -337,13 +358,13 @@ function MapJobsCanvas({
         {markerJobs.map((j) => (
           <Marker
             key={`${j.id}-circle`}
-            position={getSpreadPosition(j)}
+            position={markerLayout.get(j.id) ?? { lat: j.lat, lng: j.lng, zIndex: 1000 }}
             icon={markerCircle ?? undefined}
-            zIndex={1}
+            zIndex={(markerLayout.get(j.id)?.zIndex ?? 1000) - 1}
           />
         ))}
         {markerJobs.map((j) => {
-          const iconPosition = getSpreadPosition(j);
+          const iconPosition = markerLayout.get(j.id) ?? { lat: j.lat, lng: j.lng, zIndex: 1000 };
           return (
             <Marker
               key={`${j.id}-icon`}
@@ -353,11 +374,11 @@ function MapJobsCanvas({
                 url: resolveIconUrl(j.jobTypeIconPath || j.imageUrl),
                 ...(markerIcon ?? {}),
               }}
-              zIndex={2}
+              zIndex={iconPosition.zIndex}
             />
           );
         })}
-      </Map>
+      </GoogleMap>
 
       <div className="mj-vignette" />
     </div>
