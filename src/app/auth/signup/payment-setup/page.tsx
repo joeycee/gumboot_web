@@ -157,6 +157,37 @@ const styles = `
     background: rgba(229,229,229,0.05);
     color: rgba(229,229,229,0.65);
   }
+  .pay-help-toggle {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: #8fd8cf;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.4;
+    padding: 0;
+    text-align: left;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .pay-help-toggle:hover {
+    color: #b3ebe4;
+  }
+  .pay-help-toggle:focus-visible {
+    outline: 2px solid rgba(143,216,207,0.55);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+  .pay-help-panel {
+    border: 1px solid rgba(38,166,154,0.26);
+    background: rgba(38,166,154,0.08);
+    border-radius: 12px;
+    padding: 12px 14px;
+    color: rgba(229,245,242,0.92);
+    font-size: 13px;
+    line-height: 1.65;
+  }
   .pay-actions {
     display: flex;
     gap: 10px;
@@ -244,6 +275,7 @@ export default function PaymentSetupPage() {
   const [hasSavedBank, setHasSavedBank] = useState(false);
   const [bankLoading, setBankLoading] = useState(true);
   const [cardResetKey, setCardResetKey] = useState(0);
+  const [showCardWhy, setShowCardWhy] = useState(false);
 
   const loginHref = useMemo(() => {
     const returnPath = nextPath
@@ -457,6 +489,21 @@ export default function PaymentSetupPage() {
                           ? "A saved card is already on file. You can still add another secure card below."
                           : "No saved card yet. Add one securely with Stripe so posting and customer payments are ready."}
                     </div>
+                    <button
+                      className="pay-help-toggle"
+                      type="button"
+                      aria-expanded={showCardWhy}
+                      onClick={() => setShowCardWhy((current) => !current)}
+                    >
+                      Why do I need to add a card?
+                    </button>
+                    {showCardWhy ? (
+                      <div className="pay-help-panel">
+                        We ask for a saved card so Gumboot can securely hold payment when you accept a worker, which helps
+                        protect both sides. The money is only released after the job is finished and you confirm everything
+                        looks good, so you are not being charged twice or asked to pay again at completion.
+                      </div>
+                    ) : null}
                     <div className="pay-stripe-shell">
                       <StripeSetupCardForm
                         buttonLabel="Save secure card"
