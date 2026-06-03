@@ -1,5 +1,3 @@
-import http from "node:http";
-import https from "node:https";
 import type { JobDetailsEnvelope, JobDetails, AddressValue, JobTypeValue, UserValue } from "@/lib/jobFlow";
 import { getJobDescription, getJobTitle, normalizeJobDetails } from "@/lib/jobFlow";
 import { sanitizePublicLocation } from "@/lib/publicLocation";
@@ -229,42 +227,19 @@ export async function requestJobDetails(jobId: string, userId?: string): Promise
   const url = new URL(`${baseUrl}/job_details`);
   url.searchParams.set("jobId", jobId);
   if (userId) url.searchParams.set("userId", userId);
-  const payload = JSON.stringify(userId ? { jobId, userId } : { jobId });
-  const transport = url.protocol === "https:" ? https : http;
-
-  return new Promise<JobDetailsResponse>((resolve, reject) => {
-    const request = transport.request(
-      url,
-      {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(payload).toString(),
-        },
-      },
-      (response) => {
-        const chunks: Buffer[] = [];
-
-        response.on("data", (chunk) => {
-          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        });
-
-        response.on("end", () => {
-          resolve({
-            statusCode: response.statusCode ?? 500,
-            body: Buffer.concat(chunks).toString("utf8"),
-            contentType: Array.isArray(response.headers["content-type"])
-              ? response.headers["content-type"][0] ?? null
-              : response.headers["content-type"] ?? null,
-          });
-        });
-      }
-    );
-
-    request.on("error", reject);
-    request.write(payload);
-    request.end();
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    cache: "no-store",
   });
+
+  return {
+    statusCode: response.status,
+    body: await response.text(),
+    contentType: response.headers.get("content-type"),
+  };
 }
 
 export async function fetchJobDetailsEnvelope(jobId: string, userId?: string): Promise<JobDetailsEnvelope | null> {
