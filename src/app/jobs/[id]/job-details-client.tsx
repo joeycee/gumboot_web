@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { JobShareButton } from "@/components/JobShareButton";
 import type { ApiEnvelope } from "@/lib/apiTypes";
 import { ApiError } from "@/lib/api";
 import { hasCompletedIdentityVerification } from "@/lib/accountStatus";
@@ -18,8 +19,10 @@ import {
 } from "@/lib/applications";
 import { resolveChatMediaUrl, resolveUserImageUrl } from "@/lib/messages";
 import { cancelJob as cancelManagedJob, deleteJob as deleteManagedJob } from "@/lib/jobManagement";
+import { buildJobShareContent } from "@/lib/jobShare";
 import { buildJobAppLink, detectMobileDevice, getMobileStoreUrl, shouldAttemptMobileAppOpen } from "@/lib/mobileApp";
 import { createAcceptancePaymentIntent, extractCardsFromResponse, getSavedCards } from "@/lib/payments";
+import { sanitizePublicLocation } from "@/lib/publicLocation";
 import { buildPublicProfileHref } from "@/lib/publicProfiles";
 import { addReview } from "@/lib/reviews";
 import { stripePromise } from "@/lib/stripe";
@@ -508,6 +511,34 @@ const styles = `
     line-height: 1.22; color: var(--text);
     margin-bottom: 16px;
   }
+  .jdc-share-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    margin: 0 0 18px;
+  }
+  .jdc-share-btn {
+    min-height: 42px;
+    padding: 0 18px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04)),
+      rgba(16,22,28,0.72);
+    color: rgba(234,234,234,0.96);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.05),
+      0 10px 24px rgba(0,0,0,0.18);
+  }
+  .jdc-share-btn:hover:not(:disabled) {
+    background:
+      linear-gradient(180deg, rgba(32,151,189,0.18), rgba(32,151,189,0.10)),
+      rgba(16,22,28,0.82);
+    border-color: rgba(32,151,189,0.34);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.06),
+      0 14px 28px rgba(0,0,0,0.24);
+  }
 
   /* Meta grid */
   .jdc-meta {
@@ -821,11 +852,7 @@ function getJobTypeName(t?: JobTypeValue) {
 function getAddressText(a?: AddressValue) {
   if (!a) return null;
   if (typeof a === "string") {
-    const parts = a
-      .split(",")
-      .map((part) => part.trim())
-      .filter(Boolean);
-    return parts[1] || parts[0] || null;
+    return sanitizePublicLocation(a);
   }
 
   const suburb =
@@ -836,11 +863,7 @@ function getAddressText(a?: AddressValue) {
 
   const rawAddress = typeof a.address === "string" ? a.address.trim() : "";
   if (!rawAddress) return null;
-  const parts = rawAddress
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  return parts[1] || parts[0] || null;
+  return sanitizePublicLocation(rawAddress);
 }
 
 function getPosterName(u?: UserValue) {
@@ -871,11 +894,7 @@ function getLocationDisplay(job?: JobDetails | null) {
   const a = getAddressText(job?.address);
   if (a) return a;
   const loc = job?.location;
-  if (typeof loc === "string" && loc.trim()) return loc.trim();
-  if (isObject(loc) && Array.isArray(loc.coordinates) && loc.coordinates.length >= 2) {
-    const [lng, lat] = loc.coordinates;
-    return `${lat}, ${lng}`;
-  }
+  if (typeof loc === "string" && loc.trim()) return sanitizePublicLocation(loc.trim()) || "Location provided after acceptance";
   return "No address provided";
 }
 
@@ -1199,6 +1218,13 @@ export default function JobDetailsClient({ id }: { id: string }) {
     return `$${rawPrice}`;
   }, [currentWorkerRequest, effectivePrice, job?.price_assured, posterActiveRequest]);
   const priceCaption = currentWorkerRequest || posterActiveRequest ? "Offered price" : "Listed price";
+  const share = buildJobShareContent({
+    id: job?._id || job?.id || id,
+    title,
+    description,
+    location: locationText,
+    priceLabel: priceLabel === "???" ? null : priceLabel,
+  });
 
   const posterRating =
     job?.userId && typeof job.userId !== "string" ? job.userId.rating : undefined;
@@ -1589,6 +1615,12 @@ export default function JobDetailsClient({ id }: { id: string }) {
                   </div>
 
                   <h1 className="jdc-title">{title}</h1>
+
+                  {!LOCKED_JOB_STATUSES.has(status) ? (
+                    <div className="jdc-share-wrap">
+                      <JobShareButton share={share} className="jdc-share-btn" label="Share this job" />
+                    </div>
+                  ) : null}
 
                   <PostedBy
                     name={resolvedPosterName}

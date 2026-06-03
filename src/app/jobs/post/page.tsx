@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { JobShareButton } from "@/components/JobShareButton";
+import { buildJobShareContent } from "@/lib/jobShare";
 import { isClientE2ETestModeEnabled } from "@/lib/e2eTestMode";
 import { getJobTypes, JobType } from "@/lib/postJob";
 import { extractCardsFromResponse, getSavedCards } from "@/lib/payments";
@@ -28,10 +30,39 @@ type MeUser = {
   selfie?: string;
 };
 
+type PostedJobShareState = {
+  jobId: string;
+  title: string;
+  description: string;
+  budgetLabel: string | null;
+  location: string | null;
+};
+
 const E2E_TEST_ADDRESS_COORDS = {
   lat: -36.8485,
   lng: 174.7633,
 };
+
+function extractCreatedJobId(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const record = value as Record<string, unknown>;
+  const direct = [record._id, record.id, record.jobId, record.job_id].find(
+    (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
+  );
+  if (direct) return direct;
+  return extractCreatedJobId(record.body ?? record.data ?? record.job ?? record.getdetails ?? null);
+}
+
+function getShareLocationFromAddress(address: string) {
+  const parts = address
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 3) return parts[parts.length - 2] || parts[parts.length - 1] || null;
+  if (parts.length >= 2) return parts[1] || null;
+  return null;
+}
 
 const styles = `
   .pj-root * { box-sizing: border-box; }
@@ -458,6 +489,17 @@ const styles = `
     color: rgba(229,229,229,0.82);
     line-height: 1.6;
     font-size: 14px;
+  }
+  .pj-share-modal {
+    width: min(100%, 520px);
+    display: grid;
+    gap: 16px;
+  }
+  .pj-share-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
   }
   .pj-modal-actions {
     display: flex;
@@ -920,6 +962,7 @@ export default function PostJobPage() {
   const [draftHydrated, setDraftHydrated] = useState(false);
   const [pendingResumeSubmit, setPendingResumeSubmit] = useState(false);
   const [restoredDraftHadImages, setRestoredDraftHadImages] = useState(false);
+  const [postedJobShare, setPostedJobShare] = useState<PostedJobShareState | null>(null);
 
   const [jobTypes, setJobTypes] = useState<JobType[]>([]);
   const [jobTypesLoading, setJobTypesLoading] = useState(true);
@@ -1163,6 +1206,19 @@ export default function PostJobPage() {
     const found = (jobTypes as JobTypeOption[]).find((t) => String(t.id ?? t._id) === String(jobTypeId));
     return found?.name || "";
   }, [jobTypeId, jobTypes]);
+  const postedJobShareContent = useMemo(
+    () =>
+      postedJobShare
+        ? buildJobShareContent({
+            id: postedJobShare.jobId,
+            title: postedJobShare.title,
+            description: postedJobShare.description,
+            location: postedJobShare.location,
+            priceLabel: postedJobShare.budgetLabel,
+          })
+        : null,
+    [postedJobShare]
+  );
   const clockHandDegrees = useMemo(() => getClockHandDegrees(exactTime), [exactTime]);
 
   function canProceed() {
@@ -1348,8 +1404,17 @@ export default function PostJobPage() {
             : `add_job failed (${jobRes.status})`;
       if (!jobRes.ok) throw new Error(jobErrorMessage);
 
+      const jobId = extractCreatedJobId(jobJson);
+      if (!jobId) throw new Error("Job was posted, but we couldn't determine its public link.");
+
       clearPostJobDraft();
-      router.push("/?posted=1");
+      setPostedJobShare({
+        jobId,
+        title: title.trim(),
+        description: description.trim(),
+        budgetLabel: unsureCost ? null : budget ? `$${budget}` : null,
+        location: getShareLocationFromAddress(addressLine.trim()),
+      });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to post job");
     } finally {
@@ -1953,6 +2018,47 @@ export default function PostJobPage() {
           </div>
         </section>
       </div>
+
+      {postedJobShare && postedJobShareContent ? (
+        <div
+          className="pj-modal-backdrop"
+          role="presentation"
+          onClick={() => setPostedJobShare(null)}
+        >
+          <div
+            className="pj-modal pj-share-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="posted-job-share-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="pj-modal-title" id="posted-job-share-title">Job posted</h2>
+            <p className="pj-modal-copy">
+              Your job is live. Share it now to get more eyes on it while it is still open.
+            </p>
+            <JobShareButton share={postedJobShareContent} />
+            <div className="pj-share-actions">
+              <button
+                type="button"
+                className="pj-btn secondary"
+                onClick={() => {
+                  setPostedJobShare(null);
+                  router.push("/");
+                }}
+              >
+                Back home
+              </button>
+              <button
+                type="button"
+                className="pj-btn primary"
+                onClick={() => router.push(`/jobs/${encodeURIComponent(postedJobShare.jobId)}`)}
+              >
+                Open job
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {budgetInfoOpen && (
         <div

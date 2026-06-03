@@ -2,6 +2,7 @@ export function getSiteOrigin() {
   const candidates = [
     process.env.NEXT_PUBLIC_SITE_URL,
     process.env.SITE_URL,
+    process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL,
     process.env.VERCEL_PROJECT_PRODUCTION_URL,
     process.env.VERCEL_URL,
   ];
@@ -13,7 +14,7 @@ export function getSiteOrigin() {
     return `https://${value}`;
   }
 
-  return "http://localhost:3000";
+  return "https://web.gumboot.app";
 }
 
 export function getSiteUrl(path = "/") {

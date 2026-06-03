@@ -1,0 +1,28 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#0F151C"/>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect x="42" y="42" width="1116" height="546" rx="34" fill="rgba(18,26,33,0.92)" stroke="rgba(255,255,255,0.08)"/>
+  <circle cx="118" cy="118" r="18" fill="#2097BD"/>
+  <text x="156" y="129" fill="#F5F7FA" font-size="36" font-family="Arial, Helvetica, sans-serif" font-weight="700">Gumboot</text>
+  <rect x="888" y="88" width="226" height="56" rx="28" fill="rgba(32,151,189,0.16)" stroke="rgba(32,151,189,0.38)"/>
+  <text x="934" y="124" fill="#93D8EA" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="700">Job Share</text>
+  <text x="90" y="250" fill="#F5F7FA" font-size="68" font-family="Arial, Helvetica, sans-serif" font-weight="700">Local jobs across New Zealand</text>
+  <text x="90" y="322" fill="rgba(245,247,250,0.78)" font-size="28" font-family="Arial, Helvetica, sans-serif">
+    View trusted local work opportunities and send an offer through Gumboot.
+  </text>
+  <rect x="90" y="420" width="218" height="84" rx="22" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.12)"/>
+  <text x="120" y="455" fill="rgba(234,234,234,0.58)" font-size="18" font-family="Arial, Helvetica, sans-serif" letter-spacing="2">DISCOVER</text>
+  <text x="120" y="487" fill="#F5F7FA" font-size="32" font-family="Arial, Helvetica, sans-serif" font-weight="700">Fresh local work</text>
+  <rect x="334" y="420" width="218" height="84" rx="22" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.12)"/>
+  <text x="364" y="455" fill="rgba(234,234,234,0.58)" font-size="18" font-family="Arial, Helvetica, sans-serif" letter-spacing="2">CONNECT</text>
+  <text x="364" y="487" fill="#F5F7FA" font-size="32" font-family="Arial, Helvetica, sans-serif" font-weight="700">Send an offer fast</text>
+  <rect x="578" y="420" width="218" height="84" rx="22" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.12)"/>
+  <text x="608" y="455" fill="rgba(234,234,234,0.58)" font-size="18" font-family="Arial, Helvetica, sans-serif" letter-spacing="2">TRUSTED</text>
+  <text x="608" y="487" fill="#F5F7FA" font-size="32" font-family="Arial, Helvetica, sans-serif" font-weight="700">Safe local platform</text>
+  <defs>
+    <radialGradient id="bg" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(244 82) rotate(30.4319) scale(572.368 364.937)">
+      <stop stop-color="#2097BD" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#0F151C" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+</svg>

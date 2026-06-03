@@ -3,11 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { JobShareButton } from "@/components/JobShareButton";
 import { Shell } from "@/components/Shell";
 import { MapJobs } from "@/components/MapJobs";
 import { hasCompletedIdentityVerification } from "@/lib/accountStatus";
 import { api } from "@/lib/api";
+import { buildJobShareContent } from "@/lib/jobShare";
 import { formatJobPrice, isJobPriceUnsure, Job, normalizeJobs } from "@/lib/jobs";
+import { sanitizePublicLocation } from "@/lib/publicLocation";
 import { useMe } from "@/lib/useMe";
 
 type ViewMode = "map" | "list";
@@ -314,7 +317,8 @@ const styles = `
     background: transparent;
     cursor: pointer;
     transition: background 0.14s;
-    display: block;
+    display: grid;
+    gap: 12px;
     color: inherit;
   }
   .job-row-inner {
@@ -375,6 +379,10 @@ const styles = `
     gap: 8px;
     align-items: center;
     flex-wrap: wrap;
+  }
+  .job-row-actions {
+    display: flex;
+    justify-content: flex-end;
   }
   .job-row-price { color: #26A69A; font-weight: 500; }
   .job-row-location { color: rgba(229,229,229,0.52); }
@@ -484,6 +492,11 @@ const styles = `
     display: flex;
     flex-direction: column;
     justify-content: center;
+  }
+  .list-card-actions {
+    margin-top: 12px;
+    display: flex;
+    justify-content: flex-end;
   }
   .list-card-title {
     font-size: 14px;
@@ -695,11 +708,33 @@ function getLocationSummary(job: Job) {
 
   const addressText = (job.addressText ?? "").trim();
   if (!addressText) return "Location pending";
-  const parts = addressText
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  return parts[1] || parts[0] || addressText;
+  return sanitizePublicLocation(addressText) || "Location pending";
+}
+
+function getShareLocationSummary(job: Job) {
+  const raw = (job.raw ?? {}) as {
+    suburb?: unknown;
+    city?: unknown;
+    address?: { suburb?: unknown; city?: unknown } | string | null;
+  };
+  const addressObject =
+    raw.address && typeof raw.address === "object" && !Array.isArray(raw.address)
+      ? raw.address
+      : null;
+  const suburb =
+    typeof addressObject?.suburb === "string"
+      ? addressObject.suburb
+      : typeof raw.suburb === "string"
+        ? raw.suburb
+        : "";
+  const city =
+    typeof addressObject?.city === "string"
+      ? addressObject.city
+      : typeof raw.city === "string"
+        ? raw.city
+        : job.city ?? "";
+
+  return suburb.trim() || city.trim() || getLocationSummary(job);
 }
 
 export default function HomeClient() {
@@ -881,9 +916,17 @@ export default function HomeClient() {
                 </div>
               ))
             : filteredJobs.map((j) => (
-                <button
+                <div
                   key={j.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => openJobPage(j)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openJobPage(j);
+                    }
+                  }}
                   className="job-row"
                 >
                   <div className="job-row-inner">
@@ -900,7 +943,19 @@ export default function HomeClient() {
                       </div>
                     </div>
                   </div>
-                </button>
+                  <div className="job-row-actions">
+                    <JobShareButton
+                      compact
+                      share={buildJobShareContent({
+                        id: j.id,
+                        title: j.title,
+                        description: j.description,
+                        location: getShareLocationSummary(j),
+                        priceLabel: j.price == null || isJobPriceUnsure(j.priceAssured) ? null : formatJobPrice(j.price, j.priceAssured),
+                      })}
+                    />
+                  </div>
+                </div>
               ))}
         </div>
       </div>
@@ -1009,7 +1064,19 @@ export default function HomeClient() {
                 <div className="list-view-scroll">
                   <div className="list-grid">
                     {filteredJobs.map((j) => (
-                      <div key={j.id} className="list-card" onClick={() => openJobPage(j)}>
+                      <div
+                        key={j.id}
+                        className="list-card"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => openJobPage(j)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            openJobPage(j);
+                          }
+                        }}
+                      >
                         <div className="list-card-media" aria-hidden="true">
                           <img src={getJobTypeImageUrl(j, apiOrigin)} alt="" />
                         </div>
@@ -1022,6 +1089,18 @@ export default function HomeClient() {
                               {formatJobPrice(j.price, j.priceAssured, "???")}
                             </div>
                             <div className="list-card-open">Open</div>
+                          </div>
+                          <div className="list-card-actions">
+                            <JobShareButton
+                              compact
+                              share={buildJobShareContent({
+                                id: j.id,
+                                title: j.title,
+                                description: j.description,
+                                location: getShareLocationSummary(j),
+                                priceLabel: j.price == null || isJobPriceUnsure(j.priceAssured) ? null : formatJobPrice(j.price, j.priceAssured),
+                              })}
+                            />
                           </div>
                         </div>
                       </div>

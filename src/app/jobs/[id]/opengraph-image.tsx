@@ -50,17 +50,17 @@ export default async function OpengraphImage({ params }: { params: Promise<{ id:
   const share = await fetchJobShareData(id);
 
   const title = share?.title || "Gumboot Job";
-  const description = share?.description || "Book trusted local help in minutes.";
+  const description = "View this local job and send an offer through Gumboot.";
   const facts = [
     { label: "Type", value: share?.jobTypeName || "Local help" },
-    { label: "Location", value: share?.location || "View listing for details" },
+    { label: "Platform", value: "Gumboot" },
     { label: "Budget", value: share?.priceLabel || "Ask for quote" },
   ];
 
   if (share?.dateLabel) {
     facts.push({ label: "Date", value: share.dateLabel });
-  } else if (share?.posterName) {
-    facts.push({ label: "Posted by", value: share.posterName });
+  } else {
+    facts.push({ label: "Availability", value: "Open now" });
   }
 
   return new ImageResponse(

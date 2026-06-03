@@ -2,6 +2,7 @@ import http from "node:http";
 import https from "node:https";
 import type { JobDetailsEnvelope, JobDetails, AddressValue, JobTypeValue, UserValue } from "@/lib/jobFlow";
 import { getJobDescription, getJobTitle, normalizeJobDetails } from "@/lib/jobFlow";
+import { sanitizePublicLocation } from "@/lib/publicLocation";
 import { getSiteUrl } from "@/lib/site";
 
 type JobDetailsResponse = {
@@ -15,6 +16,10 @@ export type JobShareData = {
   title: string;
   description: string;
   shareDescription: string;
+  metadataTitle: string;
+  metadataDescription: string;
+  shareTitle: string;
+  shareText: string;
   priceLabel: string | null;
   jobTypeName: string | null;
   location: string | null;
@@ -22,6 +27,17 @@ export type JobShareData = {
   posterName: string | null;
   imageUrl: string | null;
   url: string;
+};
+
+export type JobShareContent = {
+  id: string;
+  title: string;
+  description: string;
+  location: string | null;
+  priceLabel: string | null;
+  url: string;
+  shareTitle: string;
+  shareText: string;
 };
 
 function getBackendBaseUrl() {
@@ -64,9 +80,11 @@ function getPosterName(user?: UserValue) {
 
 function getAddressText(address?: AddressValue) {
   if (!address) return null;
-  if (typeof address === "string") return address.trim() || null;
+  if (typeof address === "string") {
+    return sanitizePublicLocation(address);
+  }
 
-  const parts = [address.address, address.city, address.state, address.country]
+  const parts = [address.city, address.state, address.country]
     .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
     .map((value) => value.trim());
 
@@ -78,13 +96,7 @@ function getLocation(job?: JobDetails | null) {
   if (addressText) return addressText;
 
   if (typeof job?.location === "string" && job.location.trim()) {
-    return job.location.trim();
-  }
-
-  const coordinates = isObject(job?.location) && Array.isArray(job.location.coordinates) ? job.location.coordinates : null;
-  if (coordinates && coordinates.length >= 2) {
-    const [lng, lat] = coordinates;
-    return `${lat}, ${lng}`;
+    return sanitizePublicLocation(job.location.trim());
   }
 
   return null;
@@ -117,6 +129,58 @@ function clipText(value: string, maxLength: number) {
   return `${value.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
+function stripTrailingPunctuation(value: string) {
+  return value.replace(/[.,;:!?]+$/g, "").trim();
+}
+
+export function buildPublicJobUrl(jobId: string, originOverride?: string) {
+  const path = `/jobs/${encodeURIComponent(jobId)}`;
+  if (originOverride) {
+    return new URL(path, originOverride).toString();
+  }
+  return getSiteUrl(path);
+}
+
+export function buildJobShareContent(input: {
+  id?: string | null;
+  title?: string | null;
+  description?: string | null;
+  location?: string | null;
+  priceLabel?: string | null;
+  originOverride?: string;
+}): JobShareContent | null {
+  const id = input.id?.trim();
+  if (!id) return null;
+
+  const title = input.title?.trim() || "Local job";
+  const description = input.description?.trim() || "View the full job details on Gumboot.";
+  const location = sanitizePublicLocation(input.location?.trim() || null);
+  const priceLabel = input.priceLabel?.trim() || null;
+  const sentence = stripTrailingPunctuation(title);
+  const intro = [`Someone needs help with ${sentence}`];
+
+  if (location) {
+    intro.push(`in ${location}`);
+  }
+
+  if (priceLabel) {
+    intro.push(`for ${priceLabel}`);
+  }
+
+  const shareText = clipText(`${intro.join(" ")}. View or apply on Gumboot.`, 160);
+
+  return {
+    id,
+    title,
+    description,
+    location,
+    priceLabel,
+    url: buildPublicJobUrl(id, input.originOverride),
+    shareTitle: `Job on Gumboot: ${title}`,
+    shareText,
+  };
+}
+
 function buildShareDescription(job: {
   description: string;
   jobTypeName: string | null;
@@ -124,10 +188,20 @@ function buildShareDescription(job: {
   priceLabel: string | null;
   dateLabel: string | null;
 }) {
-  const facts = [job.jobTypeName, job.location, job.priceLabel, job.dateLabel].filter(Boolean);
+  const safeLocation = sanitizePublicLocation(job.location);
+  const facts = [job.jobTypeName, safeLocation, job.priceLabel, job.dateLabel].filter(Boolean);
   const prefix = facts.length > 0 ? `${facts.join(" • ")}.` : "";
   const body = job.description ? clipText(job.description.replace(/\s+/g, " ").trim(), 140) : "";
   return clipText([prefix, body].filter(Boolean).join(" "), 180) || "View this job on Gumboot.";
+}
+
+function buildMetadataTitle(job: { title: string; location: string | null }) {
+  const safeLocation = sanitizePublicLocation(job.location);
+  return safeLocation ? `${job.title} in ${safeLocation} on Gumboot` : `${job.title} on Gumboot`;
+}
+
+function buildMetadataDescription() {
+  return "View this local job and send an offer through Gumboot.";
 }
 
 function getPrimaryImage(job?: JobDetails | null) {
@@ -219,19 +293,31 @@ export async function fetchJobShareData(jobId: string): Promise<JobShareData | n
   const dateLabel = formatDate(job.exp_date ?? job.date ?? null);
   const posterName = getPosterName(job.userId);
   const imageUrl = getPrimaryImage(job);
-  const url = getSiteUrl(`/jobs/${encodeURIComponent(job._id || job.id || jobId)}`);
-
-  return {
+  const shareContent = buildJobShareContent({
     id: job._id || job.id || jobId,
     title,
     description,
+    location,
+    priceLabel,
+  });
+
+  if (!shareContent) return null;
+
+  return {
+    id: shareContent.id,
+    title: shareContent.title,
+    description: shareContent.description,
     shareDescription: buildShareDescription({ description, jobTypeName, location, priceLabel, dateLabel }),
+    metadataTitle: buildMetadataTitle({ title: shareContent.title, location }),
+    metadataDescription: buildMetadataDescription(),
+    shareTitle: shareContent.shareTitle,
+    shareText: shareContent.shareText,
     priceLabel,
     jobTypeName,
     location,
     dateLabel,
     posterName,
     imageUrl,
-    url,
+    url: shareContent.url,
   };
 }

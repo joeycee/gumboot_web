@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { JobShareButton } from "@/components/JobShareButton";
+import { buildJobShareContent } from "@/lib/jobShare";
 import { formatJobPrice, isJobPriceUnsure, Job } from "@/lib/jobs";
+import { sanitizePublicLocation } from "@/lib/publicLocation";
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap');
@@ -602,11 +605,7 @@ function getLocationSummary(job: Job) {
 
   const addressText = (job.addressText ?? "").trim();
   if (!addressText) return "Location pending";
-  const parts = addressText
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  return parts[1] || parts[0] || "Location pending";
+  return sanitizePublicLocation(addressText) || "Location pending";
 }
 
 function RatingStars({ value }: { value: number }) {
@@ -742,6 +741,13 @@ function DrawerContent({
   const hasDate = job.date || job.expDate;
   const typeImageUrl = getJobTypeImageUrl(job, apiOrigin);
   const locationSummary = getLocationSummary(job);
+  const share = buildJobShareContent({
+    id: job.id,
+    title: job.title,
+    description: job.description,
+    location: locationSummary,
+    priceLabel: job.price == null || isJobPriceUnsure(job.priceAssured) ? null : formatJobPrice(job.price, job.priceAssured),
+  });
 
   // stop background scroll while viewer open
   useEffect(() => {
@@ -783,6 +789,9 @@ function DrawerContent({
                 <span className={`jdd-top-chip price${job.price == null || isJobPriceUnsure(job.priceAssured) ? " unknown" : ""}`}>
                   {formatJobPrice(job.price, job.priceAssured, "???")}
                 </span>
+              </div>
+              <div style={{ marginTop: 14 }}>
+                <JobShareButton compact share={share} />
               </div>
             </div>
           </div>
