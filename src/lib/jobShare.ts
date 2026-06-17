@@ -9,6 +9,11 @@ type JobDetailsResponse = {
   contentType: string | null;
 };
 
+type JobDetailsPayload = {
+  jobId: string;
+  userId?: string;
+};
+
 export type JobShareData = {
   id: string;
   title: string;
@@ -222,11 +227,58 @@ function getPrimaryImage(job?: JobDetails | null) {
   return null;
 }
 
+async function requestJobDetailsFromServer(url: URL, payload: JobDetailsPayload): Promise<JobDetailsResponse> {
+  const body = JSON.stringify(payload);
+  const transport =
+    url.protocol === "https:" ? await import("https") : await import("http");
+
+  return new Promise<JobDetailsResponse>((resolve, reject) => {
+    const request = transport.request(
+      url,
+      {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body).toString(),
+        },
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+
+        response.on("data", (chunk) => {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        });
+
+        response.on("end", () => {
+          resolve({
+            statusCode: response.statusCode ?? 500,
+            body: Buffer.concat(chunks).toString("utf8"),
+            contentType: Array.isArray(response.headers["content-type"])
+              ? response.headers["content-type"][0] ?? null
+              : response.headers["content-type"] ?? null,
+          });
+        });
+      }
+    );
+
+    request.on("error", reject);
+    request.write(body);
+    request.end();
+  });
+}
+
 export async function requestJobDetails(jobId: string, userId?: string): Promise<JobDetailsResponse> {
   const baseUrl = getBackendBaseUrl().replace(/\/+$/, "");
   const url = new URL(`${baseUrl}/job_details`);
   url.searchParams.set("jobId", jobId);
   if (userId) url.searchParams.set("userId", userId);
+  const payload: JobDetailsPayload = { jobId, ...(userId ? { userId } : {}) };
+
+  if (typeof window === "undefined") {
+    return requestJobDetailsFromServer(url, payload);
+  }
+
   const response = await fetch(url, {
     method: "GET",
     headers: {
